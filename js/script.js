@@ -86,7 +86,7 @@ function setupEventListeners() {
     document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
-    // 【修正】小節移動ボタン（同時に音声の位置も計算してシーク移動）
+    // 小節移動（同時に音声のシーク位置も計算して移動）
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("jumpMeasureInput").value);
         if (m > 0) {
@@ -161,13 +161,12 @@ function setupEventListeners() {
     });
 }
 
-// 【新規】指定小節の開始秒数を計算してそこへジャンプする機能
+// 指定小節の開始秒数計算＆ジャンプ
 function jumpToMeasure(mIndex) {
     const course = state.courses[state.currentCourse];
     let currentBpm = state.bpm;
     let targetTime = -state.offset;
 
-    // 指定の小節までの経過時間を計算
     const targetM = Math.min(mIndex, course.measures.length - 1);
     for (let i = 0; i < targetM; i++) {
         const bChange = course.bpmChanges.find(bc => bc.measure === i + 1);
@@ -177,7 +176,6 @@ function jumpToMeasure(mIndex) {
 
     if (targetTime < 0) targetTime = 0;
 
-    // 視点（スクロール）を該当小節へ移動
     const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetM}"]`);
     if (targetRow) {
         targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -186,11 +184,9 @@ function jumpToMeasure(mIndex) {
         setTimeout(() => targetRow.style.backgroundColor = '', 1000);
     }
 
-    // 楽曲の再生位置（再生秒数）も合わせる
     seekToTime(targetTime);
 }
 
-// 時間（秒）の指定位置にシーク再生移動する関数
 function seekToTime(timeInSeconds) {
     state.playbackTime = Math.max(0, timeInSeconds);
     
@@ -342,7 +338,6 @@ function updateUIFromState() {
     });
 }
 
-// 【修正】大音符の判別用クラス（big-note）の処理を追加
 function updateCellContent(cell, val) {
     if (val >= 1 && val <= 4) {
         const img = document.createElement("img");
@@ -405,7 +400,7 @@ function updateLastPlayedNoteIndex() {
     state.lastActiveMIndex = -1;
 }
 
-// 【修正】空白ノーツ（値が0）のセルでも playing-note クラスを付与して光らせるように変更
+// 軽量化済みの再生・ハイライト更新処理
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
@@ -464,21 +459,19 @@ function updatePlayback() {
 
     const rows = document.querySelectorAll(".measure-row");
     rows.forEach((row, idx) => {
-        if (idx === activeMIndex) {
-            row.classList.add("playing");
-            const cells = row.querySelectorAll(".note-cell");
-            cells.forEach((cell, cellIdx) => {
-                // 【変更箇所】ノーツが空白（0）でも該当タイミングであれば光らせる
-                if (cellIdx === activeNIndex) {
-                    cell.classList.add("playing-note");
-                } else {
-                    cell.classList.remove("playing-note");
-                }
-            });
-        } else {
-            row.classList.remove("playing");
-            row.querySelectorAll(".note-cell.playing-note").forEach(c => c.classList.remove("playing-note"));
+        const isPlayingRow = (idx === activeMIndex);
+        
+        if (isPlayingRow !== row.classList.contains("playing")) {
+            row.classList.toggle("playing", isPlayingRow);
         }
+
+        const cells = row.querySelectorAll(".note-cell");
+        cells.forEach((cell, cellIdx) => {
+            const isPlayingCell = (isPlayingRow && cellIdx === activeNIndex);
+            if (isPlayingCell !== cell.classList.contains("playing-note")) {
+                cell.classList.toggle("playing-note", isPlayingCell);
+            }
+        });
     });
 
     requestAnimationFrame(updatePlayback);
