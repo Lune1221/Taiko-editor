@@ -660,7 +660,7 @@ function updatePlayback() {
 
     // 連打区間にいる場合、一定間隔（例: 0.12秒ごと ≒ 連打のテンポ感）で音を鳴らす処理
     if (isCurrentlyInRenda) {
-        if (state.playbackTime - lastRendaSoundTime >= 0.12) {
+        if (state.playbackTime - lastRendaSoundTime >= 0.10) {
             playSound("1"); // ドンの音を鳴らす
             lastRendaSoundTime = state.playbackTime;
         }
