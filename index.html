@@ -6,8 +6,6 @@
     <title>Taiko Chart Editor</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <style>
-    </style>
 </head>
 <body>
     <header>
@@ -59,14 +57,15 @@
                     <button class="tool-btn" data-note="4">
                         <img src="assets/img/Ka_2.png" alt="大カ"> 大カ
                     </button>
-                    <button class="tool-btn" data-note="5" style="font-size: 12px;">
-                        連打開始(5)
+                    <!-- 連打開始・風船・連打終了にアイコンを適用 -->
+                    <button class="tool-btn" data-note="5">
+                        <img src="assets/img/Renda.png" alt="連打開始"> 連打開始
                     </button>
-                    <button class="tool-btn" data-note="7" style="font-size: 12px;">
-                        風船(7)
+                    <button class="tool-btn" data-note="7">
+                        <img src="assets/img/Balloon.png" alt="風船"> 風船
                     </button>
-                    <button class="tool-btn" data-note="8" style="font-size: 12px;">
-                        連打終了(8)
+                    <button class="tool-btn" data-note="8">
+                        <img src="assets/img/Renda.png" alt="連打終了"> 連打終了
                     </button>
                     <button class="tool-btn" data-note="0" style="grid-column: span 2;">
                         空白
@@ -77,7 +76,7 @@
 
             <div class="panel">
                 <h2>再生コントロール</h2>
-                <div class="playback-controls">
+                <div class="playback-controls" style="display: flex; gap: 5px;">
                     <button id="playBtn" class="btn success" style="flex: 1;">再生 / 停止</button>
                     <button id="stopBtn" class="btn danger">最初から</button>
                 </div>
@@ -122,7 +121,7 @@
                 </div>
             </div>
 
-            <div id="measuresContainer" class="measures-container" style="padding: 15px; overflow-y: auto; height: calc(100vh - 200px);">
+            <div id="measuresContainer" class="measures-container">
             </div>
         </div>
     </main>
@@ -518,8 +517,6 @@ function updateUIFromState() {
                     if (note === 7) {
                         delete course.balloonCounts[`${mIndex}-${nIndex}`];
                         measures[mIndex][nIndex] = 0;
-                    } else if (note === 8) {
-                        measures[mIndex][nIndex] = 0;
                     } else {
                         measures[mIndex][nIndex] = 0;
                     }
@@ -582,12 +579,17 @@ function updateUIFromState() {
 }
 
 function updateCellContent(cell, val, status) {
-    if ((val >= 1 && val <= 4)) {
+    if (val >= 1 && val <= 4) {
         const img = document.createElement("img");
         if (val === 1) img.src = "assets/img/Don.png";
         else if (val === 2) img.src = "assets/img/Ka.png";
-        else if (val === 3) img.src = "assets/img/Don_2.png";
-        else if (val === 4) img.src = "assets/img/Ka_2.png";
+        else if (val === 3) {
+            img.src = "assets/img/Don_2.png";
+            img.className = "big-note";
+        } else if (val === 4) {
+            img.src = "assets/img/Ka_2.png";
+            img.className = "big-note";
+        }
         cell.appendChild(img);
     }
 }
