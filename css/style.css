@@ -147,28 +147,25 @@ main {
     pointer-events: none;
 }
 
+/* ツールボックス内の連打・風船を譜面風に切り出し表示するスタイル */
 .tool-btn .tool-renda-icon {
     display: inline-block;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     background-image: url('../assets/img/Renda.png');
     background-position: left center;
-    background-size: 300% 100%;
-    background-repeat: no-repeat;
+    background-size: 300% 100%; /* 左側1/3を使用 */
     border-radius: 3px 0 0 3px;
-    flex-shrink: 0;
 }
 
 .tool-btn .tool-balloon-icon {
     display: inline-block;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     background-image: url('../assets/img/Balloon.png');
     background-position: left center;
-    background-size: 200% 100%;
-    background-repeat: no-repeat;
+    background-size: 200% 100%; /* 左半分を使用 */
     border-radius: 3px 0 0 3px;
-    flex-shrink: 0;
 }
 
 .tool-btn.active {
@@ -320,6 +317,7 @@ main {
     overflow: hidden;
 }
 
+/* --- 連打・風船ノーツの背景切り出し --- */
 .note-cell.renda-start {
     background-image: url('../assets/img/Renda.png');
     background-position: left center;
@@ -416,4 +414,67 @@ main {
 .seek-bar {
     flex: 1;
     cursor: pointer;
+}
+
+/* --- ツールボックス --- */
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+}
+
+.tool-btn {
+    background: #2a2a35;
+    border: 1px solid #444;
+    color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.tool-btn img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* ツールボックス内の連打・風船を譜面風に切り出し表示するスタイル */
+.tool-btn .tool-renda-icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-image: url('../assets/img/Renda.png');
+    background-position: left center;
+    background-size: 300% 100%; /* 左側1/3を使用 */
+    background-repeat: no-repeat;
+    border-radius: 3px 0 0 3px;
+    flex-shrink: 0;
+}
+
+.tool-btn .tool-balloon-icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-image: url('../assets/img/Balloon.png');
+    background-position: left center;
+    background-size: 200% 100%; /* 左半分を使用 */
+    background-repeat: no-repeat;
+    border-radius: 3px 0 0 3px;
+    flex-shrink: 0;
+}
+
+.tool-btn.active {
+    border-color: #4a90e2;
+    background-color: #2c3e50;
+}
+
+.tool-btn.delete {
+    grid-column: span 2;
+    background-color: #552222;
 }
