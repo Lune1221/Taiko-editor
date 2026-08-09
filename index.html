@@ -745,6 +745,7 @@ function resetPlay() {
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
     lastRendaSoundTime = 0;
+    activeBalloonData = null;
     document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
@@ -752,6 +753,7 @@ function resetPlay() {
 let lastHighlightedRow = null;
 let lastHighlightedCell = null;
 let lastRendaSoundTime = 0;
+let activeBalloonData = null; // 現在処理中の風船情報
 
 function clearMeasureHighlight() {
     if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
@@ -766,6 +768,7 @@ function updateLastPlayedNoteIndex() {
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
     lastRendaSoundTime = 0;
+    activeBalloonData = null;
 }
 
 function updatePlayback() {
@@ -774,7 +777,7 @@ function updatePlayback() {
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
     if (duration > 0) {
-        if (state.playbackTime >= duration) { resetPlay(); return; }
+        if (duration > 0 && state.playbackTime >= duration) { resetPlay(); return; }
         document.getElementById("seekBar").value = (state.playbackTime / duration) * 100;
         document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
@@ -790,6 +793,7 @@ function updatePlayback() {
     let scanBpm = state.bpm;
     let scanTime = -state.offset;
     let currentRendaStart = -1;
+    let foundBalloonThisFrame = null;
 
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
@@ -812,16 +816,93 @@ function updatePlayback() {
             } else if (val === 7) {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-                // 風船が始まってから、打数×間隔の時間が経過するまでの間だけ連打音を鳴らす（最初の頭の音の位置を含めない）
-                let balloonStartActive = noteTime + 0.05; // 最初のノーツ自体の発音タイミングと被らないよう少しずらす
-                let balloonDuration = balloonCount * 0.11; 
+                
+                // 次の音符、あるいは対応する風船終了(9)までの時間を探して風船全体の持続時間を決定する
+                let balloonEndTime = noteTime + 1.0; // デフォルト幅
+                let foundEnd = false;
+                let sm = m, sn = n + 1;
+                let searchLimit = 0;
+                while (sm < course.measures.length && searchLimit < 100) {
+                    while (sn < course.measures[sm].length) {
+                        let nextVal = course.measures[sm][sn];
+                        if (nextVal === 9 || nextVal > 0) {
+                            // 次のノーツや終了地点までの時間を計算
+                            let tempBpm = scanBpm;
+                            let tempTime = -state.offset;
+                            let targetTimeAcc = 0;
+                            for (let tm = 0; tm <= sm; tm++) {
+                                let tBChange = course.bpmChanges.find(i => i.measure === tm + 1);
+                                if (tBChange) tempBpm = tBChange.bpm;
+                                let tmTime = (60 / tempBpm) * 4;
+                                let tSub = course.measures[tm].length;
+                                let tStep = tmTime / tSub;
+                                for (let tn = 0; tn < tSub; tn++) {
+                                    if (tm === sm && tn === sn) {
+                                        targetTimeAcc = tempTime + (tn * tStep);
+                                        foundEnd = true;
+                                        break;
+                                    }
+                                }
+                                if (foundEnd) break;
+                                tempTime += tmTime;
+                            }
+                            if (foundEnd) {
+                                balloonEndTime = targetTimeAcc;
+                            }
+                            break;
+                        }
+                        sn++;
+                        searchLimit++;
+                    }
+                    if (foundEnd) break;
+                    sm++;
+                    sn = 0;
+                }
+
+                // 風船が始まってから終わるまでの時間
+                let balloonDuration = Math.max(0.2, balloonEndTime - noteTime);
+                let balloonStartActive = noteTime + 0.02; // 開始時の最初の音と被らないようにわずかにずらす
+
                 if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
                     isCurrentlyInRenda = true;
+                    // 風船の打数に合わせて、時間内に綺麗に割り切れるように間隔(interval)を算出
+                    let interval = balloonDuration / Math.max(1, balloonCount);
+                    foundBalloonThisFrame = {
+                        key: countKey,
+                        interval: interval,
+                        startTime: balloonStartActive
+                    };
                 }
             }
             noteGlobalIndex++;
         }
         scanTime += mTime;
+    }
+
+    if (foundBalloonThisFrame) {
+        if (!activeBalloonData || activeBalloonData.key !== foundBalloonThisFrame.key) {
+            activeBalloonData = foundBalloonThisFrame;
+            lastRendaSoundTime = activeBalloonData.startTime;
+        }
+
+        // 算出された均等な間隔で音を鳴らす
+        if (state.playbackTime - lastRendaSoundTime >= activeBalloonData.interval) {
+            playSound("1");
+            lastRendaSoundTime += activeBalloonData.interval;
+        }
+    } else {
+        activeBalloonData = null;
+        if (!isCurrentlyInRenda) {
+            lastRendaSoundTime = 0;
+        }
+    }
+
+    if (isCurrentlyInRenda && !foundBalloonThisFrame) {
+        // 通常連打用
+        if (state.playbackTime - lastRendaSoundTime >= 0.11) {
+            playSound("1");
+            lastRendaSoundTime = state.playbackTime;
+        }
     }
 
     noteGlobalIndex = 0;
@@ -857,15 +938,6 @@ function updatePlayback() {
             noteGlobalIndex++;
         }
         accumulatedTime += mTime;
-    }
-
-    if (isCurrentlyInRenda) {
-        if (state.playbackTime - lastRendaSoundTime >= 0.11) {
-            playSound("1");
-            lastRendaSoundTime = state.playbackTime;
-        }
-    } else {
-        lastRendaSoundTime = 0;
     }
 
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
