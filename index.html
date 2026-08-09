@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taiko Chart Editor</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- JSZipの読み込み（ZIPダウンロード用） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Taiko Chart Editor</h1>
+        <div class="header-actions">
+            <div class="file-input-group">
+                <label for="audioFile" class="btn secondary">音楽を選択</label>
+                <input type="file" id="audioFile" accept="audio/*">
+                <span id="audioFileName" class="file-name">未選択</span>
+            </div>
+            <button id="downloadBtn" class="btn primary">ZIPでダウンロード</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- サイドバー：曲情報・エディタ設定 -->
+        <aside class="sidebar">
+            <section class="panel">
+                <h2>曲情報</h2>
+                <div class="input-group">
+                    <label>タイトル</label>
+                    <input type="text" id="metaTitle" value="sample">
+                </div>
+                <div class="input-group">
+                    <label>BPM</label>
+                    <input type="number" id="metaBpm" value="120" min="1" max="999">
+                    <button id="updateBpmBtn" class="btn small">更新</button>
+                </div>
+                <div class="input-group">
+                    <label>OFFSET (秒)</label>
+                    <input type="number" id="metaOffset" value="0" step="0.01">
+                </div>
+                <div class="input-group">
+                    <label>拍子</label>
+                    <select id="metaMeasure">
+                        <option value="4/4">4/4</option>
+                        <option value="3/4">3/4</option>
+                        <option value="6/8">6/8</option>
+                    </select>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>ツールボックス</h2>
+                <div class="tool-grid">
+                    <button class="tool-btn active" data-note="1">
+                        <img src="assets/img/Don.png" alt="ドン"> ドン
+                    </button>
+                    <button class="tool-btn" data-note="2">
+                        <img src="assets/img/Ka.png" alt="カ"> カ
+                    </button>
+                    <button class="tool-btn" data-note="3">
+                        <img src="assets/img/Don_2.png" alt="大ドン"> 大ドン
+                    </button>
+                    <button class="tool-btn" data-note="4">
+                        <img src="assets/img/Ka_2.png" alt="大カ"> 大カ
+                    </button>
+                    <button class="tool-btn" data-note="0">空白</button>
+                    <button class="tool-btn delete" data-note="delete">削除</button>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>再生コントロール</h2>
+                <div class="playback-controls">
+                    <button id="playBtn" class="btn success">再生 / 停止</button>
+                    <button id="stopBtn" class="btn danger">最初から</button>
+                </div>
+            </section>
+        </aside>
+
+        <!-- メイン：譜面エディタ・ビュー -->
+        <section class="editor-container">
+            <div class="editor-header">
+                <span id="currentTimeDisplay">0.00 / 0.00s</span>
+                <div class="zoom-controls">
+                    <label>解像度 (1小節の分割数):</label>
+                    <select id="subdivisionSelect">
+                        <option value="4">4分音符</option>
+                        <option value="8">8分音符</option>
+                        <option value="16" selected>16分音符</option>
+                        <option value="24">24分音符 (3連符)</option>
+                        <option value="32">32分音符</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="measuresContainer" class="measures-container">
+                <!-- 小節が動的に生成されます -->
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
