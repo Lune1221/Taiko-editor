@@ -7,14 +7,12 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        /* 再生中の小節を光らせるスタイル */
         .measure-row.playing {
             background-color: rgba(255, 235, 59, 0.2);
             box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
             border-left: 4px solid #ffeb3b;
             transition: background-color 0.1s ease;
         }
-        /* シークバーのスタイル */
         .seek-bar-container {
             margin-top: 8px;
             display: flex;
@@ -45,7 +43,6 @@
     </header>
 
     <main>
-        <!-- サイドバー：曲情報・エディタ設定 -->
         <aside class="sidebar">
             <div class="panel">
                 <h2>曲情報</h2>
@@ -118,9 +115,7 @@
             </div>
         </aside>
 
-        <!-- メインエディタエリア -->
         <div class="editor-container">
-            <!-- コースタブ -->
             <div class="course-tabs">
                 <button class="course-tab" data-course="easy">かんたん</button>
                 <button class="course-tab" data-course="normal">ふつう</button>
@@ -139,18 +134,17 @@
                         <option value="16" selected>16分音符</option>
                         <option value="24">24分音符 (3連符)</option>
                         <option value="32">32分音符</option>
+                        <option value="48">48分音符</option>
                     </select>
                 </div>
             </div>
 
             <div id="measuresContainer" class="measures-container">
-                <!-- 小節が動的に生成されます -->
             </div>
         </div>
     </main>
 
     <script>
-// 状態管理（複数コース対応・拡張メタデータ対応）
 const state = {
     bpm: 120,
     offset: 0,
@@ -185,7 +179,6 @@ const state = {
 
 let soundBuffers = { don: null, ka: null };
 
-// DOM要素
 const metaTitle = document.getElementById("metaTitle");
 const metaBpm = document.getElementById("metaBpm");
 const metaOffset = document.getElementById("metaOffset");
@@ -362,14 +355,12 @@ function setupEventListeners() {
     stopBtn.addEventListener("click", resetPlay);
     downloadBtn.addEventListener("click", downloadZip);
 
-    // シークバー操作時の処理
     seekBar.addEventListener("input", (e) => {
         if (!state.audioBuffer) return;
         const duration = state.audioBuffer.duration;
         state.playbackTime = (parseFloat(e.target.value) / 100) * duration;
         
         if (state.isPlaying) {
-            // 再生中の場合は一度止めて新しい位置から再開
             if (state.audioSource) {
                 try { state.audioSource.stop(); } catch(e) {}
             }
@@ -380,10 +371,7 @@ function setupEventListeners() {
             state.startTime = state.audioContext.currentTime - state.playbackTime;
         }
 
-        // シークした位置に合わせて直前に再生されたノートのインデックスを再計算
         updateLastPlayedNoteIndex();
-        
-        // 画面の表示を更新
         currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     });
 }
@@ -401,6 +389,7 @@ async function loadAudioFile(file) {
     }
 }
 
+// TJA解析ロジック（正確な小節長分解に修正）
 function parseTJA(text) {
     const lines = text.split(/\r?\n/);
     
@@ -423,6 +412,7 @@ function parseTJA(text) {
     let currentBpmChanges = [];
     let currentLevel = 10;
     let currentBalloon = "";
+    let measureBuffer = "";
 
     const courseMap = {
         "0": "easy", "EASY": "easy",
@@ -468,6 +458,7 @@ function parseTJA(text) {
             currentBpmChanges = [];
             currentLevel = 10;
             currentBalloon = "";
+            measureBuffer = "";
             continue;
         }
 
@@ -492,17 +483,23 @@ function parseTJA(text) {
                 continue;
             }
 
-            if (line.endsWith(",")) line = line.slice(0, -1);
+            if (line.startsWith("#")) continue;
 
-            if (line.length > 0 && !line.startsWith("#")) {
-                let notes = [];
-                for (let i = 0; i < line.length; i++) {
-                    let char = line[i];
-                    if (["0","1","2","3","4","5","6","7","8","9"].includes(char)) {
-                        notes.push(parseInt(char));
+            // コンマ（,）で区切られるまで文字列を蓄積
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === ",") {
+                    let notes = [];
+                    for (let c of measureBuffer) {
+                        if (["0","1","2","3","4","5","6","7","8","9"].includes(c)) {
+                            notes.push(parseInt(c));
+                        }
                     }
+                    currentMeasures.push(notes.length > 0 ? notes : [0]);
+                    measureBuffer = "";
+                } else {
+                    measureBuffer += char;
                 }
-                if (notes.length > 0) currentMeasures.push(notes);
             }
         }
     }
@@ -576,15 +573,10 @@ function renderEditor() {
     const courseData = state.courses[state.currentCourse];
     const measures = courseData.measures;
 
-    if (measures.length > 0) {
-        state.subdivision = measures[0].length;
-        subdivisionSelect.value = state.subdivision.toString();
-    }
-
     measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
         row.className = "measure-row";
-        row.dataset.measureIndex = mIndex; // 小節ハイライト用にインデックスを付与
+        row.dataset.measureIndex = mIndex;
 
         const num = document.createElement("div");
         num.className = "measure-number";
@@ -686,7 +678,6 @@ function clearMeasureHighlight() {
 }
 
 function updateLastPlayedNoteIndex() {
-    // シークした際、現在の再生時間より前にあるノートを「再生済み」扱いにする計算
     const courseData = state.courses[state.currentCourse];
     const measures = courseData.measures;
     let currentBpm = state.bpm;
@@ -724,14 +715,12 @@ function updatePlayback() {
         return;
     }
 
-    // シークバーの位置を更新（ドラッグ中じゃなければ）
     if (duration > 0) {
         seekBar.value = (state.playbackTime / duration) * 100;
     }
 
     currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
 
-    // --- 再生位置に合わせてノーツの効果音自動再生 ＆ 小節のハイライト処理 ---
     const courseData = state.courses[state.currentCourse];
     const measures = courseData.measures;
     let currentBpm = state.bpm;
@@ -748,7 +737,6 @@ function updatePlayback() {
         const subdivision = measures[m].length;
         const stepTime = measureTime / subdivision;
 
-        // 現在の時間がこの小節の範囲内かチェック
         if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + measureTime) {
             activeMeasureIndex = m;
         }
@@ -770,7 +758,6 @@ function updatePlayback() {
         accumulatedTime += measureTime;
     }
 
-    // 小節のハイライト表示を更新
     const measureRows = document.querySelectorAll(".measure-row");
     measureRows.forEach((row, idx) => {
         if (idx === activeMeasureIndex) {
