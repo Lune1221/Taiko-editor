@@ -289,6 +289,8 @@ function updateUIFromState() {
                 }
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
+            } else if (note === 7) {
+                cell.classList.add("balloon-left");
             }
 
             updateCellContent(cell, note);
@@ -324,6 +326,10 @@ function updateCellContent(cell, val) {
             img.classList.add("big-note");
         }
         cell.appendChild(img);
+    } else if (val === 5 || val === 6) {
+        cell.classList.add("renda-start");
+    } else if (val === 7) {
+        cell.classList.add("balloon-left");
     }
 }
 
@@ -368,7 +374,6 @@ function updateLastPlayedNoteIndex() {
 let prevActiveM = -1;
 let prevActiveN = -1;
 
-// HTML5 AudioタグのcurrentTimeを基準にした超軽量同期ループ
 function updatePlayback() {
     if (!state.isPlaying) return;
     
@@ -416,7 +421,6 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
-    // 小節スクロール
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
         const targetMIndex = Math.max(0, activeMIndex - 1);
@@ -426,7 +430,6 @@ function updatePlayback() {
         }
     }
 
-    // ハイライトの高速更新
     if (prevActiveM !== activeMIndex || prevActiveN !== activeNIndex) {
         if (prevActiveM !== -1) {
             const prevRow = document.querySelector(`.measure-row[data-measure-index="${prevActiveM}"]`);
