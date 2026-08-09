@@ -123,6 +123,14 @@
             border-radius: 4px 0 0 4px;
             border-right: none;
         }
+        .note-cell.balloon-body {
+            background-image: url('assets/img/Balloon.png');
+            background-position: center center;
+            background-size: 200% 100%;
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+        }
         .note-cell.balloon-end {
             background-image: url('assets/img/Balloon.png');
             background-position: right center;
@@ -525,7 +533,6 @@ function parseTJA(text) {
             for (let char of line) {
                 if (char === ",") {
                     let notes = [];
-                    // TJA上では風船の終点は「8」なのでそのまま読み込む
                     for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
                     
                     const mIdx = state.courses[activeCourse].measures.length;
@@ -591,16 +598,6 @@ function updateUIFromState() {
             if (note === 5 || note === 6) {
                 isInsideRenda = true;
                 cell.classList.add("renda-start");
-            } else if (note === 8) {
-                if (isInsideRenda) {
-                    cell.classList.add("renda-end");
-                    isInsideRenda = false;
-                } else if (isInsideBalloon) {
-                    cell.classList.add("balloon-end");
-                    isInsideBalloon = false;
-                }
-            } else if (isInsideRenda) {
-                cell.classList.add("renda-body");
             } else if (note === 7) {
                 isInsideBalloon = true;
                 cell.classList.add("balloon-start");
@@ -612,8 +609,19 @@ function updateUIFromState() {
                 badge.className = "balloon-count-badge";
                 badge.textContent = course.balloonCounts[countKey];
                 cell.appendChild(badge);
-            } else if (isInsideBalloon) {
+            } else if (note === 8) {
+                // 連打中なら連打の終点、風船中なら風船の終点として正確に分岐
+                if (isInsideBalloon) {
+                    cell.classList.add("balloon-end");
+                    isInsideBalloon = false;
+                } else if (isInsideRenda) {
+                    cell.classList.add("renda-end");
+                    isInsideRenda = false;
+                }
+            } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
+            } else if (isInsideBalloon) {
+                cell.classList.add("balloon-body");
             }
 
             updateCellContent(cell, note);
@@ -651,10 +659,10 @@ function updateUIFromState() {
                         let targetMeasure = measures[mIndex];
                         if (nIndex + 1 < targetMeasure.length) {
                             targetMeasure[nIndex] = 7;
-                            targetMeasure[nIndex + 1] = 8; // 終点は共通で8
+                            targetMeasure[nIndex + 1] = 8;
                         } else if (mIndex + 1 < measures.length) {
                             targetMeasure[nIndex] = 7;
-                            measures[mIndex + 1][0] = 8; // 終点は共通で8
+                            measures[mIndex + 1][0] = 8;
                         } else {
                             alert("次の小節が存在しないため、小節の末尾に風船を置けません。先に小節を追加してください。");
                             return;
@@ -839,7 +847,6 @@ function updatePlayback() {
                 while (sm < course.measures.length && searchLimit < 100) {
                     while (sn < course.measures[sm].length) {
                         let nextVal = course.measures[sm][sn];
-                        // 終点である「8」または通常の音符で終了とみなす
                         if (nextVal === 8 || nextVal > 0) {
                             let tempBpm = scanBpm;
                             let tempTime = -state.offset;
@@ -1023,10 +1030,7 @@ function generateTJA() {
             
             let lineStr = "";
             for (let i = 0; i < meas.length; i++) {
-                // 内部で風船終点として「9」を使っていた箇所もそのまま「8」として出力
-                let n = meas[i];
-                if (n === 9) n = 8;
-                lineStr += n;
+                lineStr += meas[i];
             }
             tja += lineStr + ",\n";
         });
