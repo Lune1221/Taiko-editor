@@ -228,6 +228,13 @@ function playSound(type) {
 }
 
 function setupEventListeners() {
+    // タッチやクリックによる自動再生制限の強制解除
+    document.addEventListener("pointerdown", () => {
+        if (state.audioContext && state.audioContext.state === "suspended") {
+            state.audioContext.resume();
+        }
+    }, { once: true });
+
     metaTitle.addEventListener("input", (e) => state.title = e.target.value);
     metaBpm.addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     metaOffset.addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
@@ -567,6 +574,8 @@ function updateCellContent(cell, noteValue) {
     if (noteValue === 0) return;
 
     const img = document.createElement("img");
+    if (noteValue === 1) img.src = "assets/img/Don.png";
+    else if (noteValue ===-1 /* dummy check */) {} // standard fallback
     if (noteValue === 1) img.src = "assets/img/Don.png";
     else if (noteValue === 2) img.src = "assets/img/Ka.png";
     else if (noteValue === 3) img.src = "assets/img/Don_2.png";
