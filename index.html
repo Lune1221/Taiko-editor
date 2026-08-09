@@ -41,6 +41,22 @@
                     <input type="number" step="0.01" id="metaOffset" value="0">
                 </div>
             </div>
+
+            <!-- BPMCHANGE設定パネル -->
+            <div class="panel">
+                <h2>BPM変更</h2>
+                <div class="input-group">
+                    <label>小節番号</label>
+                    <input type="number" id="bpmChangeMeasure" value="1" min="1">
+                </div>
+                <div class="input-group">
+                    <label>変更後BPM</label>
+                    <input type="number" id="bpmChangeValue" value="120">
+                </div>
+                <button id="addBpmChangeBtn" class="btn secondary" style="width: 100%; margin-top: 5px;">BPM変更を追加</button>
+                <div id="bpmChangeList" style="margin-top: 8px; font-size: 12px; color: #aaa; max-height: 80px; overflow-y: auto;"></div>
+            </div>
+
             <div class="panel">
                 <h2>ツールボックス</h2>
                 <div class="tool-grid">
@@ -74,7 +90,19 @@
                     <button class="tool-btn delete" data-note="delete">削除</button>
                 </div>
             </div>
+
+            <div class="panel">
+                <h2>再生コントロール</h2>
+                <div class="playback-controls" style="display: flex; gap: 5px;">
+                    <button id="playBtn" class="btn success" style="flex: 1;">再生 / 停止</button>
+                    <button id="stopBtn" class="btn danger">最初から</button>
+                </div>
+                <div class="seek-bar-container">
+                    <input type="range" id="seekBar" class="seek-bar" value="0" min="0" max="100" step="0.01">
+                </div>
+            </div>
         </aside>
+
         <div class="editor-container">
             <div class="course-tabs">
                 <button class="course-tab" data-course="easy">かんたん</button>
@@ -192,6 +220,18 @@ function setupEventListeners() {
     document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
     document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
+
+    document.getElementById("addBpmChangeBtn").addEventListener("click", () => {
+        const m = parseInt(document.getElementById("bpmChangeMeasure").value);
+        const b = parseFloat(document.getElementById("bpmChangeValue").value);
+        if (m > 0 && !isNaN(b)) {
+            const course = state.courses[state.currentCourse];
+            course.bpmChanges = course.bpmChanges.filter(item => item.measure !== m);
+            course.bpmChanges.push({ measure: m, bpm: b });
+            course.bpmChanges.sort((x, y) => x.measure - y.measure);
+            updateBpmChangeListUI();
+        }
+    });
 
     document.getElementById("addMeasureBtn").addEventListener("click", () => {
         const course = state.courses[state.currentCourse];
@@ -349,9 +389,11 @@ function parseTJA(text) {
         }
 
         if (inCourse) {
-            if (line.startsWith("#BPMCHANGE")) {
+            if (line.toUpperCase().startsWith("#BPMCHANGE")) {
                 const b = parseFloat(line.split(" ")[1]);
-                if (!isNaN(b)) state.courses[activeCourse].bpmChanges.push({ measure: state.courses[activeCourse].measures.length + 1, bpm: b });
+                if (!isNaN(b)) {
+                    state.courses[activeCourse].bpmChanges.push({ measure: state.courses[activeCourse].measures.length + 1, bpm: b });
+                }
                 continue;
             }
             if (line.startsWith("#")) continue;
@@ -382,12 +424,39 @@ function parseTJA(text) {
     if(firstCourse) state.currentCourse = firstCourse;
 }
 
+function updateBpmChangeListUI() {
+    const listDiv = document.getElementById("bpmChangeList");
+    listDiv.innerHTML = "";
+    const course = state.courses[state.currentCourse];
+    course.bpmChanges.forEach(item => {
+        const row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.marginBottom = "2px";
+        row.innerHTML = `<span>#${item.measure} : ${item.bpm} BPM</span>`;
+        
+        const delBtn = document.createElement("button2"); // 簡易削除用
+        const btn = document.createElement("button");
+        btn.textContent = "×";
+        btn.style.cssText = "background:#c0392b; color:#fff; border:none; padding:1px 5px; border-radius:3px; cursor:pointer; font-size:10px;";
+        btn.onclick = () => {
+            course.bpmChanges = course.bpmChanges.filter(i => i.measure !== item.measure);
+            updateBpmChangeListUI();
+        };
+        row.appendChild(btn);
+        listDiv.appendChild(row);
+    });
+}
+
 function updateUIFromState() {
     document.querySelectorAll(".course-tab").forEach(tab => {
         const k = tab.getAttribute("data-course");
         tab.classList.toggle("has-data", state.courses[k].exists);
         tab.classList.toggle("active", k === state.currentCourse);
     });
+
+    updateBpmChangeListUI();
     
     const container = document.getElementById("measuresContainer");
     container.innerHTML = "";
