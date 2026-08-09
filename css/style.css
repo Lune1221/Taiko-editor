@@ -331,3 +331,47 @@ main {
     flex: 1;
     cursor: pointer;
 }
+
+/* --- 風船ノーツ（Balloon.pngから切り分け） --- */
+.note-cell.balloon-left {
+    background-image: url('../assets/img/Balloon.png');
+    background-position: left center;
+    background-size: 200% 100%;
+    border-radius: 4px 0 0 4px;
+    border-right: none;
+}
+.note-cell.balloon-right {
+    background-image: url('../assets/img/Balloon.png');
+    background-position: right center;
+    background-size: 200% 100%;
+    border-radius: 0 4px 4px 0;
+    border-left: none;
+}
+
+/* 風船・連打の終了位置（オレンジの縦棒） */
+.note-cell.balloon-endpoint-overlay::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 50%;
+    width: 4px;
+    background-color: #ff5722;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(255, 87, 34, 0.8);
+}
+
+/* 風船のヒット数カウントバッジ */
+.balloon-count-badge {
+    position: absolute;
+    bottom: -2px;
+    right: 2px;
+    font-size: 10px;
+    color: #fff;
+    background: rgba(0,0,0,0.7);
+    padding: 0 3px;
+    border-radius: 3px;
+    pointer-events: none;
+}
