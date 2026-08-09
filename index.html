@@ -218,7 +218,7 @@ const state = {
     audioSource: null,
     playbackTime: 0,
     lastPlayedNoteIndex: -1,
-    lastActiveMIndex: -1 // 直前の小節インデックスを記憶
+    lastActiveMIndex: -1
 };
 
 let soundBuffers = { don: null, ka: null };
@@ -577,13 +577,14 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
-    // 小節が切り替わった「その瞬間だけ」スクロールを実行する
+    // 小節が切り替わった時に「1小節前」を基準にしてスクロールする
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
-        const activeRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
-        if (activeRow) {
-            // block: 'nearest' を指定することで、新しい小節が画面からはみ出た時に1小節分だけスマートにスクロール
-            activeRow.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        // 常に1小節前の小節を基準にする（0小節未満にはならないように制御）
+        const targetMIndex = Math.max(0, activeMIndex - 1);
+        const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetMIndex}"]`);
+        if (targetRow) {
+            targetRow.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     }
 
