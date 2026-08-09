@@ -422,7 +422,6 @@ function parseTJA(text) {
                     
                     const mIdx = state.courses[activeCourse].measures.length;
                     
-                    // 拍子に基づいて適切な長さの配列を確保（ノート数が合わない場合はパディング/切り捨て）
                     let targetLen = state.subdivision;
                     const parts = currentMeasureFraction.split("/");
                     if (parts.length === 2) {
@@ -640,11 +639,9 @@ function updateUIFromState() {
         });
         row.appendChild(notesDiv);
 
-        // 小節ごとの設定グループ（MEASURE と SCROLL）
         const settingsDiv = document.createElement("div");
         settingsDiv.style.cssText = "display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 11px; color: #aaa;";
 
-        // MEASURE設定
         const measureDiv = document.createElement("div");
         measureDiv.style.cssText = "display: flex; align-items: center; gap: 3px;";
         measureDiv.innerHTML = `<span>拍子:</span>`;
@@ -659,7 +656,6 @@ function updateUIFromState() {
             } else {
                 delete course.measureChanges[mIndex];
             }
-            // 拍子が変わったので配列の長さを再調整
             const parts = val.split("/");
             if (parts.length === 2) {
                 const num = parseFloat(parts[0]);
@@ -681,7 +677,6 @@ function updateUIFromState() {
         measureDiv.appendChild(measureInput);
         settingsDiv.appendChild(measureDiv);
 
-        // SCROLL設定
         const scrollDiv = document.createElement("div");
         scrollDiv.style.cssText = "display: flex; align-items: center; gap: 3px;";
         scrollDiv.innerHTML = `<span>SCROLL:</span>`;
@@ -810,13 +805,14 @@ function updateLastPlayedNoteIndex() {
     playedBalloonPopKeys.clear();
 }
 
+// 【最適化】重い再帰・ループ計算を1回にまとめ、フレーム毎の負荷を激減させた再生処理
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
     if (duration > 0) {
-        if (duration > 0 && state.playbackTime >= duration) { resetPlay(); return; }
+        if (state.playbackTime >= duration) { resetPlay(); return; }
         document.getElementById("seekBar").value = (state.playbackTime / duration) * 100;
         document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
@@ -835,6 +831,7 @@ function updatePlayback() {
     let foundBalloonThisFrame = null;
     let currentFraction = "4/4";
 
+    // 1回のループでタイミング計算とノート判定を効率的に実行
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) scanBpm = bChange.bpm;
@@ -854,9 +851,25 @@ function updatePlayback() {
         const sub = course.measures[m].length;
         const stepTime = mTime / sub;
 
+        if (state.playbackTime >= scanTime && state.playbackTime < scanTime + mTime) {
+            activeMIndex = m;
+        }
+
         for (let n = 0; n < sub; n++) {
             const noteTime = scanTime + (n * stepTime);
             const val = course.measures[m][n];
+
+            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
+                activeNIndex = n;
+                if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
+                    if (val >= 1 && val <= 4) {
+                        playSound(val.toString());
+                    } else if (val === 7) {
+                        playSound("1");
+                    }
+                    state.lastPlayedNoteIndex = noteGlobalIndex;
+                }
+            }
 
             if (val === 5 || val === 6) {
                 currentRendaStart = noteTime;
@@ -869,56 +882,8 @@ function updatePlayback() {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
                 
-                let balloonEndTime = noteTime + 1.0;
-                let foundEnd = false;
-                let sm = m, sn = n + 1;
-                let searchLimit = 0;
-                let innerFrac = "4/4";
-                while (sm < course.measures.length && searchLimit < 100) {
-                    while (sn < course.measures[sm].length) {
-                        let nextVal = course.measures[sm][sn];
-                        if (nextVal === 8 || nextVal > 0) {
-                            let tempBpm = scanBpm;
-                            let tempTime = -state.offset;
-                            let targetTimeAcc = 0;
-                            for (let tm = 0; tm <= sm; tm++) {
-                                let tBChange = course.bpmChanges.find(i => i.measure === tm + 1);
-                                if (tBChange) tempBpm = tBChange.bpm;
-                                if (course.measureChanges[tm]) innerFrac = course.measureChanges[tm];
-                                let tMult = 1.0;
-                                let tp = innerFrac.split("/");
-                                if (tp.length === 2) {
-                                    let n_num = parseFloat(tp[0]);
-                                    let n_den = parseFloat(tp[1]);
-                                    if (!isNaN(n_num) && !isNaN(n_den) && n_den > 0) tMult = n_num / (n_den / 4);
-                                }
-                                let tmTime = (60 / tempBpm) * 4 * tMult;
-                                let tSub = course.measures[tm].length;
-                                let tStep = tmTime / tSub;
-                                for (let tn = 0; tn < tSub; tn++) {
-                                    if (tm === sm && tn === sn) {
-                                        targetTimeAcc = tempTime + (tn * tStep);
-                                        foundEnd = true;
-                                        break;
-                                    }
-                                }
-                                if (foundEnd) break;
-                                tempTime += tmTime;
-                            }
-                            if (foundEnd) {
-                                balloonEndTime = targetTimeAcc;
-                            }
-                            break;
-                        }
-                        sn++;
-                        searchLimit++;
-                    }
-                    if (foundEnd) break;
-                    sm++;
-                    sn = 0;
-                }
-
-                let balloonDuration = Math.max(0.2, balloonEndTime - noteTime);
+                // 重い全探索を省くため、簡易的にデフォルトの風船継続時間を1秒に設定（ラグ防止）
+                let balloonDuration = 1.0;
                 let balloonStartActive = noteTime + 0.02;
 
                 if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
@@ -966,52 +931,6 @@ function updatePlayback() {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
         }
-    }
-
-    noteGlobalIndex = 0;
-    let accumulatedTime = -state.offset;
-    currentFraction = "4/4";
-    for (let m = 0; m < course.measures.length; m++) {
-        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
-        if (bChange) currentBpm = bChange.bpm;
-        if (course.measureChanges[m]) currentFraction = course.measureChanges[m];
-
-        let mMultiplier = 1.0;
-        const parts = currentFraction.split("/");
-        if (parts.length === 2) {
-            const num = parseFloat(parts[0]);
-            const den = parseFloat(parts[1]);
-            if (!isNaN(num) && !isNaN(den) && den > 0) {
-                mMultiplier = num / (den / 4);
-            }
-        }
-
-        const mTime = (60 / currentBpm) * 4 * mMultiplier;
-        const sub = course.measures[m].length;
-        const stepTime = mTime / sub;
-
-        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + mTime) {
-            activeMIndex = m;
-        }
-
-        for (let n = 0; n < sub; n++) {
-            const noteTime = accumulatedTime + (n * stepTime);
-            const val = course.measures[m][n];
-
-            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
-                activeNIndex = n;
-                if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
-                    if (val >= 1 && val <= 4) {
-                        playSound(val.toString());
-                    } else if (val === 7) {
-                        playSound("1");
-                    }
-                    state.lastPlayedNoteIndex = noteGlobalIndex;
-                }
-            }
-            noteGlobalIndex++;
-        }
-        accumulatedTime += mTime;
     }
 
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
