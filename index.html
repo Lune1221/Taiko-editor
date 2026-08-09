@@ -116,27 +116,35 @@
             border-left: none;
         }
 
-        .note-cell.balloon-start {
+        /* 風船：7とすぐ隣の8で完結させるスタイル */
+        .note-cell.balloon-left {
             background-image: url('assets/img/Balloon.png');
             background-position: left center;
             background-size: 200% 100%;
             border-radius: 4px 0 0 4px;
             border-right: none;
         }
-        .note-cell.balloon-body {
-            background-image: url('assets/img/Balloon.png');
-            background-position: center center;
-            background-size: 200% 100%;
-            border-radius: 0;
-            border-left: none;
-            border-right: none;
-        }
-        .note-cell.balloon-end {
+        .note-cell.balloon-right {
             background-image: url('assets/img/Balloon.png');
             background-position: right center;
             background-size: 200% 100%;
             border-radius: 0 4px 4px 0;
             border-left: none;
+        }
+
+        /* 空白のセルに上から被せる「終点マーク（ここまでだよー！の印）」 */
+        .note-cell.balloon-endpoint-overlay::after {
+            content: "";
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 50%;
+            width: 4px;
+            background-color: #ff5722; /* 好きな色や独自の画像に変更可能です */
+            transform: translateX(-50%);
+            border-radius: 2px;
+            pointer-events: none;
+            box-shadow: 0 0 4px rgba(255, 87, 34, 0.8);
         }
 
         .note-cell img {
@@ -568,10 +576,6 @@ function updateUIFromState() {
     const course = state.courses[state.currentCourse];
     const measures = course.measures;
 
-    // 全小節を事前にスキャンして、すべての「5/6/7（開始）」から「8（終了）」までのペアを正確に紐付ける
-    let noteStates = []; // 各ノートが何に属するかを保持 [mIndex, nIndex] -> type ('renda' or 'balloon')
-    
-    // まずすべてのノートの平坦なリストを作る
     let flatNotes = [];
     measures.forEach((measure, mIndex) => {
         measure.forEach((note, nIndex) => {
@@ -579,8 +583,6 @@ function updateUIFromState() {
         });
     });
 
-    let activeStartType = null; // 'renda' or 'balloon'
-    let currentPairStartIndex = -1;
     let pendingStarts = [];
 
     flatNotes.forEach((item, idx) => {
@@ -590,23 +592,43 @@ function updateUIFromState() {
             pendingStarts.push({ type: 'balloon', flatIdx: idx });
         } else if (item.note === 8) {
             if (pendingStarts.length > 0) {
-                let start = pendingStarts.shift(); // 一番近い未処理の開始とペアにする
+                let start = pendingStarts.shift();
                 flatNotes[start.flatIdx].status = `${start.type}-start`;
                 flatNotes[idx].status = `${start.type}-end`;
                 for (let i = start.flatIdx + 1; i < idx; i++) {
                     if (!flatNotes[i].status) {
-                        flatNotes[i].status = `${start.type}-body`;
+                        flatNotes[i].status = start.type === 'balloon' ? 'balloon-body' : 'renda-body';
                     }
                 }
             }
         }
     });
 
-    // マップに変換しやすいように整理
     let noteStatusMap = {};
+    let balloonEndpointMap = {}; // 8があった元の位置（見た目の終点マークを上乗せする場所）
+
     flatNotes.forEach(item => {
         if (item.status) {
             noteStatusMap[`${item.mIndex}-${item.nIndex}`] = item.status;
+        }
+    });
+
+    // 7と8のペアを追跡し、風船なら「7のすぐ隣に8」に見せかけ、元の8の場所をエンドポイントとして登録する
+    let activeBalloonStarts = [];
+    flatNotes.forEach((item, idx) => {
+        if (item.note === 7) {
+            activeBalloonStarts.push(idx);
+        } else if (item.note === 8 && activeBalloonStarts.length > 0) {
+            let startIdx = activeBalloonStarts.shift();
+            let startItem = flatNotes[startIdx];
+            // 7のすぐ隣（startIdx + 1）を「見た目上の風船の右側(8相当)」にする
+            if (startIdx + 1 < flatNotes.length) {
+                let neighbor = flatNotes[startIdx + 1];
+                noteStatusMap[`${startItem.mIndex}-${startItem.nIndex}`] = 'balloon-left';
+                noteStatusMap[`${neighbor.mIndex}-${neighbor.nIndex}`] = 'balloon-right';
+            }
+            // 本来の8があった場所には「終点マーク」を上乗せする
+            balloonEndpointMap[`${item.mIndex}-${item.nIndex}`] = true;
         }
     });
 
@@ -643,8 +665,8 @@ function updateUIFromState() {
                 cell.classList.add("renda-body");
             } else if (status === 'renda-end') {
                 cell.classList.add("renda-end");
-            } else if (status === 'balloon-start') {
-                cell.classList.add("balloon-start");
+            } else if (status === 'balloon-left') {
+                cell.classList.add("balloon-left");
                 const countKey = `${mIndex}-${nIndex}`;
                 if (course.balloonCounts[countKey] === undefined) {
                     course.balloonCounts[countKey] = 5;
@@ -653,15 +675,12 @@ function updateUIFromState() {
                 badge.className = "balloon-count-badge";
                 badge.textContent = course.balloonCounts[countKey];
                 cell.appendChild(badge);
-            } else if (status === 'balloon-body') {
-                cell.classList.add("balloon-body");
-            } else if (status === 'balloon-end') {
-                cell.classList.add("balloon-end");
+            } else if (status === 'balloon-right') {
+                cell.classList.add("balloon-right");
             } else {
-                // 万が一孤立している場合のフォールバック
                 if (note === 5 || note === 6) cell.classList.add("renda-start");
                 if (note === 7) {
-                    cell.classList.add("balloon-start");
+                    cell.classList.add("balloon-left");
                     const countKey = `${mIndex}-${nIndex}`;
                     if (course.balloonCounts[countKey] === undefined) course.balloonCounts[countKey] = 5;
                     const badge = document.createElement("span");
@@ -671,7 +690,12 @@ function updateUIFromState() {
                 }
             }
 
-            updateCellContent(cell, note);
+            // 元の8があった位置（空白セル）には終点マークを上から被せる
+            if (balloonEndpointMap[statusKey]) {
+                cell.classList.add("balloon-endpoint-overlay");
+            }
+
+            updateCellContent(cell, note, status);
 
             cell.addEventListener("click", () => {
                 course.exists = true;
@@ -679,42 +703,17 @@ function updateUIFromState() {
                     if (note === 7) {
                         delete course.balloonCounts[`${mIndex}-${nIndex}`];
                         measures[mIndex][nIndex] = 0;
-                        if (nIndex + 1 < measure.length && measure[nIndex + 1] === 8) {
-                            measures[mIndex][nIndex + 1] = 0;
-                        } else if (nIndex + 1 >= measure.length && mIndex + 1 < measures.length) {
-                            if (measures[mIndex + 1][0] === 8) measures[mIndex + 1][0] = 0;
-                        }
                     } else if (note === 8) {
                         measures[mIndex][nIndex] = 0;
-                        if (nIndex - 1 >= 0 && measures[mIndex][nIndex - 1] === 7) {
-                            delete course.balloonCounts[`${mIndex}-${nIndex - 1}`];
-                            measures[mIndex][nIndex - 1] = 0;
-                        } else if (nIndex === 0 && mIndex - 1 >= 0) {
-                            const prevMeas = measures[mIndex - 1];
-                            const lastIdx = prevMeas.length - 1;
-                            if (prevMeas[lastIdx] === 7) {
-                                delete course.balloonCounts[`${mIndex - 1}-${lastIdx}`];
-                                prevMeas[lastIdx] = 0;
-                            }
-                        }
                     } else {
                         measures[mIndex][nIndex] = 0;
                     }
                 } else {
                     const val = parseInt(state.selectedTool);
-                    if (val === 7) {
-                        let targetMeasure = measures[mIndex];
-                        if (nIndex + 1 < targetMeasure.length) {
-                            targetMeasure[nIndex] = 7;
-                            targetMeasure[nIndex + 1] = 8;
-                        } else if (mIndex + 1 < measures.length) {
-                            targetMeasure[nIndex] = 7;
-                            measures[mIndex + 1][0] = 8;
-                        } else {
-                            alert("次の小節が存在しないため、小節の末尾に風船を置けません。先に小節を追加してください。");
-                            return;
-                        }
-
+                    if (val === 8) {
+                        measures[mIndex][nIndex] = 8;
+                    } else if (val === 7) {
+                        measures[mIndex][nIndex] = 7;
                         const countKey = `${mIndex}-${nIndex}`;
                         const currentCnt = course.balloonCounts[countKey] || 5;
                         const newCnt = prompt("風船のヒット数（打数）を入力してください:", currentCnt);
@@ -722,8 +721,6 @@ function updateUIFromState() {
                             course.balloonCounts[countKey] = parseInt(newCnt) || 5;
                         }
                         playSound("1");
-                    } else if (val === 8) {
-                        return;
                     } else {
                         measures[mIndex][nIndex] = val;
                         if (val >= 1 && val <= 4) {
@@ -769,7 +766,7 @@ function updateUIFromState() {
     });
 }
 
-function updateCellContent(cell, val) {
+function updateCellContent(cell, val, status) {
     if ((val >= 1 && val <= 4)) {
         const img = document.createElement("img");
         if (val === 1) img.src = "assets/img/Don.png";
@@ -777,6 +774,8 @@ function updateCellContent(cell, val) {
         else if (val === 3) img.src = "assets/img/Don_2.png";
         else if (val === 4) img.src = "assets/img/Ka_2.png";
         cell.appendChild(img);
+    } else if (status === 'balloon-right') {
+        // balloon-rightは画像ではなく背景（Balloon.pngの右半分）で表現されるため画像タグは追加しない
     }
 }
 
