@@ -251,14 +251,25 @@ main {
     cursor: pointer;
     transition: all 0.2s;
     text-align: center;
+    opacity: 0.35; /* データがない難易度は暗くする */
 }
 
 .course-tab:hover {
-    color: var(--text-color);
     background-color: rgba(255, 255, 255, 0.02);
 }
 
+/* データが存在する難易度は明るく表示 */
+.course-tab.has-data {
+    opacity: 0.85;
+}
+
+.course-tab.has-data:hover {
+    opacity: 1;
+    color: var(--text-color);
+}
+
 .course-tab.active {
+    opacity: 1 !important;
     color: var(--accent);
     border-bottom-color: var(--accent);
     background-color: rgba(59, 130, 246, 0.05);
