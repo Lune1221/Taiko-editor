@@ -116,7 +116,6 @@
             border-left: none;
         }
 
-        /* 風船用分割スタイル */
         .note-cell.balloon-start {
             background-image: url('assets/img/Balloon.png');
             background-position: left center;
@@ -782,7 +781,6 @@ function updatePlayback() {
 
     const course = state.courses[state.currentCourse];
     let currentBpm = state.bpm;
-    let accumulatedTime = -state.offset;
     let noteGlobalIndex = 0;
     
     let activeMIndex = -1;
@@ -814,11 +812,11 @@ function updatePlayback() {
             } else if (val === 7) {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-                if (balloonCount > 0) {
-                    let spanTime = stepTime * 2;
-                    if (state.playbackTime >= noteTime && state.playbackTime <= noteTime + spanTime) {
-                        isCurrentlyInRenda = true;
-                    }
+                // 風船が割れるまでの大まかな時間を算出（1打あたり0.1秒など、あるいは風船の終わりまで）
+                // ここでは「風船の音符位置から、風船の打数に応じた時間（打数 × 0.1秒など）」または次の音符手前まで判定するように制限します
+                let balloonDuration = balloonCount * 0.12; 
+                if (state.playbackTime >= noteTime && state.playbackTime <= noteTime + balloonDuration) {
+                    isCurrentlyInRenda = true;
                 }
             }
             noteGlobalIndex++;
@@ -827,6 +825,7 @@ function updatePlayback() {
     }
 
     noteGlobalIndex = 0;
+    let accumulatedTime = -state.offset;
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) currentBpm = bChange.bpm;
