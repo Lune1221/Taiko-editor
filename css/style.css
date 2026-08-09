@@ -1,19 +1,265 @@
-/* --- レイアウト・ヘッダー --- */
+/* ==========================================
+   1. 基本設定（全体ベース）
+   ========================================== */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #181820;
+    color: #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ==========================================
+   2. ヘッダー
+   ========================================== */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background-color: #22222e;
+    border-bottom: 1px solid #333345;
+}
+
+header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.file-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.file-input-group input[type="file"] {
+    display: none;
+}
+
+.file-name {
+    font-size: 12px;
+    color: #aaa;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================
+   3. ボタン共通スタイル
+   ========================================== */
+.btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn.primary { background-color: #4f46e5; color: #fff; }
+.btn.primary:hover { background-color: #4338ca; }
+
+.btn.secondary { background-color: #374151; color: #e5e7eb; }
+.btn.secondary:hover { background-color: #4b5563; }
+
+.btn.success { background-color: #10b981; color: #fff; }
+.btn.success:hover { background-color: #059669; }
+
+.btn.danger { background-color: #ef4444; color: #fff; }
+.btn.danger:hover { background-color: #dc2626; }
+
+/* ==========================================
+   4. メインレイアウト & サイドバー
+   ========================================== */
+main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 320px;
+    background-color: #1f1f2b;
+    border-right: 1px solid #333345;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.panel {
+    background-color: #272736;
+    border-radius: 8px;
+    padding: 14px;
+    border: 1px solid #333345;
+}
+
+.panel h2 {
+    font-size: 14px;
+    color: #9ca3af;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.input-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.input-group label {
+    font-size: 13px;
+    color: #ccc;
+}
+
+.input-group input {
+    width: 100px;
+    padding: 4px 8px;
+    background-color: #181820;
+    border: 1px solid #44445a;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 13px;
+    text-align: right;
+}
+
+/* ツールボックス（ノーツ選択ボタン） */
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    background-color: #181820;
+    border: 1px solid #44445a;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tool-btn img {
+    width: 20px;
+    height: 20px;
+}
+
+.tool-btn:hover {
+    background-color: #2a2a3c;
+}
+
+.tool-btn.active {
+    border-color: #6366f1;
+    background-color: rgba(99, 102, 241, 0.15);
+    color: #fff;
+    font-weight: bold;
+}
+
+.tool-btn.delete.active {
+    border-color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.15);
+}
+
+.playback-controls {
+    display: flex;
+    gap: 8px;
+}
+
+/* ==========================================
+   5. エディタメイン領域 & 難易度タブ
+   ========================================== */
+.editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #14141d;
+    overflow: hidden;
+}
+
+.course-tabs {
+    display: flex;
+    background-color: #1a1a24;
+    border-bottom: 1px solid #333345;
+    padding: 0 10px;
+}
+
+.course-tab {
+    padding: 10px 18px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #888;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.course-tab:hover {
+    color: #bbb;
+}
+
+.course-tab.active {
+    color: #6366f1;
+    border-bottom-color: #6366f1;
+}
+
+.course-tab.has-data::after {
+    content: " •";
+    color: #10b981;
+}
+
+/* ==========================================
+   6. エディタヘッダー & 小節描画領域
+   ========================================== */
 .editor-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px;
-    background: #2a2a35;
+    padding: 10px 16px;
+    background: #22222e;
     border-bottom: 1px solid #3e3e50;
 }
+
 .header-controls-right {
     display: flex;
     align-items: center;
     gap: 20px;
 }
 
-/* --- 小節・セル --- */
 .measure-row {
     display: flex;
     margin-bottom: 10px;
@@ -22,16 +268,19 @@
     border-radius: 8px;
     align-items: center;
 }
+
 .measure-row.playing {
     background-color: rgba(255, 235, 59, 0.15);
     box-shadow: inset 4px 0 0 #ffeb3b;
 }
+
 .measure-number {
     width: 50px;
     font-weight: bold;
     color: #888;
     flex-shrink: 0;
 }
+
 .measure-notes {
     display: flex;
     gap: 0;
@@ -40,13 +289,16 @@
     flex-wrap: nowrap;
     flex: 1;
 }
+
 .measure-notes::-webkit-scrollbar {
     height: 6px;
 }
+
 .measure-notes::-webkit-scrollbar-thumb {
     background: #555;
     border-radius: 3px;
 }
+
 .note-cell {
     width: 32px;
     height: 32px;
@@ -71,6 +323,7 @@
     border-radius: 4px 0 0 4px;
     border-right: none;
 }
+
 .note-cell.renda-body {
     background-image: url('../assets/img/Renda.png');
     background-position: center center;
@@ -79,6 +332,7 @@
     border-left: none;
     border-right: none;
 }
+
 .note-cell.renda-end {
     background-image: url('../assets/img/Renda.png');
     background-position: right center;
@@ -93,6 +347,7 @@
     height: 28px;
     pointer-events: none;
 }
+
 .note-cell.playing-note img {
     filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
     transform: scale(1.15);
@@ -106,6 +361,7 @@
     align-items: center;
     gap: 10px;
 }
+
 .seek-bar {
     flex: 1;
     cursor: pointer;
