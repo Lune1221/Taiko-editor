@@ -110,7 +110,6 @@ function setupEventListeners() {
         state.bpm = parseFloat(e.target.value) || 120;
     });
     
-    // OFFSETが変更されたときの処理
     metaOffset.addEventListener("input", (e) => {
         state.offset = parseFloat(e.target.value) || 0;
     });
@@ -243,15 +242,8 @@ function startPlay() {
         state.audioSource.buffer = state.audioBuffer;
         state.audioSource.connect(state.audioContext.destination);
         
-        // オフセットを考慮した音声再生開始位置の計算
-        // playbackTime が 0 のとき、offset が正なら少し遅らせて再生、負なら途中から再生
-        let audioPlayTime = state.playbackTime - state.offset;
-        if (audioPlayTime < 0) {
-            // 曲のスタート前（無音部分）のときは音楽の再生は0秒地点から待機
-            state.audioSource.start(state.audioContext.currentTime + Math.abs(audioPlayTime), 0);
-        } else if (audioPlayTime < state.audioBuffer.duration) {
-            state.audioSource.start(0, audioPlayTime);
-        }
+        // 音楽は常に曲の最初（0秒）から再生をスタートさせる
+        state.audioSource.start(0, Math.max(0, state.playbackTime));
     }
 
     state.startTime = state.audioContext.currentTime - state.playbackTime;
@@ -279,20 +271,22 @@ function resetPlay() {
     currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
 }
 
-// 再生中の自動演奏（OFFSETを考慮した同期処理）
+// 音楽の再生時間から「OFFSET分のウェイト」を引いた時間を譜面進行の基準にする
 function updatePlayback() {
     if (!state.isPlaying) return;
     
     state.playbackTime = state.audioContext.currentTime - state.startTime;
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
-    if (state.audioBuffer && state.playbackTime >= duration + Math.max(0, -state.offset)) {
+    if (state.audioBuffer && state.playbackTime >= duration) {
         resetPlay();
         return;
     }
     
-    // 【重要】譜面判定のタイミングからオフセット（秒）を引くことで、音楽と譜面のズレを同期させる
-    const chartTime = state.playbackTime - state.offset;
+    // 【OFFSETの反映】
+    // 曲が始まってから state.offset 秒（例: 0.77秒）経過するまでは譜面を待たせる（chartTimeをマイナスにする）
+    // 例: offsetが -0.77 の場合、 playbackTime が 0.77 のときに chartTime が 0（1小節目の頭）になる
+    const chartTime = state.playbackTime + state.offset;
 
     if (chartTime >= 0) {
         const secondsPerBeat = 60 / state.bpm;
