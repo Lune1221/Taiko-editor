@@ -13,39 +13,40 @@ const state = {
     },
     selectedTool: "1",
     audioFile: null,
-    audioBuffer: null,
+    audioElement: null, // HTMLのaudioタグを使用
     isPlaying: false,
-    startTime: 0,
-    audioContext: null,
-    audioSource: null,
-    playbackTime: 0,
     lastPlayedNoteIndex: -1,
     lastActiveMIndex: -1
 };
 
 let soundBuffers = { don: null, ka: null };
+let audioCtx = null;
 
 window.addEventListener("DOMContentLoaded", () => {
-    initAudioContext();
+    initAudio();
     loadSoundEffects();
     setupEventListeners();
     updateUIFromState();
 });
 
-function initAudioContext() {
+function initAudio() {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    state.audioContext = new AudioContext();
+    audioCtx = new AudioContext();
+
+    // 音声再生用のhiddenなaudio要素を作成
+    state.audioElement = document.createElement("audio");
+    state.audioElement.addEventListener("ended", resetPlay);
 }
 
 async function loadSoundEffects() {
     try {
         const donRes = await fetch("./assets/audio/Neiro1_Don.ogg");
         if (donRes.ok) {
-            soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
+            soundBuffers.don = await audioCtx.decodeAudioData(await donRes.arrayBuffer());
         }
         const kaRes = await fetch("./assets/audio/Neiro1_Ka.ogg");
         if (kaRes.ok) {
-            soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+            soundBuffers.ka = await audioCtx.decodeAudioData(await kaRes.arrayBuffer());
         }
     } catch (e) {
         console.warn("効果音の読み込みに失敗しました。", e);
@@ -53,23 +54,23 @@ async function loadSoundEffects() {
 }
 
 function playSound(type) {
-    if (!state.audioContext || state.audioContext.state === "suspended") {
-        state.audioContext.resume();
+    if (!audioCtx || audioCtx.state === "suspended") {
+        audioCtx.resume();
     }
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
     if (!buffer) return;
     try {
-        const source = state.audioContext.createBufferSource();
+        const source = audioCtx.createBufferSource();
         source.buffer = buffer;
-        source.connect(state.audioContext.destination);
+        source.connect(audioCtx.destination);
         source.start(0);
     } catch(e) {}
 }
 
 function setupEventListeners() {
     document.addEventListener("pointerdown", () => {
-        if (state.audioContext && state.audioContext.state === "suspended") {
-            state.audioContext.resume();
+        if (audioCtx && audioCtx.state === "suspended") {
+            audioCtx.resume();
         }
     }, { once: true });
 
@@ -144,8 +145,10 @@ function setupEventListeners() {
 
     const seekBar = document.getElementById("seekBar");
     seekBar.addEventListener("input", (e) => {
-        if (!state.audioBuffer) return;
-        seekToTime((parseFloat(e.target.value) / 100) * state.audioBuffer.duration);
+        if (!state.audioElement.duration) return;
+        const newTime = (parseFloat(e.target.value) / 100) * state.audioElement.duration;
+        state.audioElement.currentTime = newTime;
+        updateLastPlayedNoteIndex();
     });
 }
 
@@ -168,24 +171,8 @@ function jumpToMeasure(mIndex) {
         targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
-    seekToTime(targetTime);
-}
-
-function seekToTime(timeInSeconds) {
-    state.playbackTime = Math.max(0, timeInSeconds);
-    
-    if (state.audioBuffer && state.audioBuffer.duration > 0) {
-        const percent = (state.playbackTime / state.audioBuffer.duration) * 100;
-        document.getElementById("seekBar").value = Math.min(100, percent);
-    }
-
-    if (state.isPlaying) {
-        if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
-        state.audioSource = state.audioContext.createBufferSource();
-        state.audioSource.buffer = state.audioBuffer;
-        state.audioSource.connect(state.audioContext.destination);
-        state.audioSource.start(0, state.playbackTime);
-        state.startTime = state.audioContext.currentTime - state.playbackTime;
+    if (state.audioElement.duration) {
+        state.audioElement.currentTime = Math.min(targetTime, state.audioElement.duration);
     }
     updateLastPlayedNoteIndex();
 }
@@ -193,9 +180,9 @@ function seekToTime(timeInSeconds) {
 async function loadAudioFile(file) {
     state.audioFile = file;
     document.getElementById("audioFileName").textContent = file.name;
-    try {
-        state.audioBuffer = await state.audioContext.decodeAudioData(await file.arrayBuffer());
-    } catch (err) {}
+    const url = URL.createObjectURL(file);
+    state.audioElement.src = url;
+    state.audioElement.load();
 }
 
 function parseTJA(text) {
@@ -290,7 +277,7 @@ function updateUIFromState() {
         measure.forEach((note, nIndex) => {
             const cell = document.createElement("div");
             cell.className = "note-cell";
-            cell.dataset.noteIndex = nIndex; // 高速化用の目印
+            cell.dataset.noteIndex = nIndex;
             
             if (note === 5 || note === 6) {
                 isInsideRenda = true;
@@ -344,31 +331,24 @@ function togglePlay() {
     if (state.isPlaying) {
         state.isPlaying = false;
         document.getElementById("playBtn").textContent = "再生 / 停止";
-        if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
-        if (state.audioBuffer) {
-            state.playbackTime = state.audioContext.currentTime - state.startTime;
-            if (state.playbackTime < 0) state.playbackTime = 0;
-        }
+        state.audioElement.pause();
         clearMeasureHighlight();
     } else {
-        if (state.audioContext.state === "suspended") state.audioContext.resume();
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
         state.isPlaying = true;
         document.getElementById("playBtn").textContent = "一時停止";
-        if (state.audioBuffer) {
-            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
-            state.audioSource = state.audioContext.createBufferSource();
-            state.audioSource.buffer = state.audioBuffer;
-            state.audioSource.connect(state.audioContext.destination);
-            state.audioSource.start(0, Math.max(0, state.playbackTime));
-        }
-        state.startTime = state.audioContext.currentTime - state.playbackTime;
+        state.audioElement.play().catch(e => console.log("再生エラー:", e));
         requestAnimationFrame(updatePlayback);
     }
 }
 
 function resetPlay() {
-    if (state.isPlaying) togglePlay();
-    state.playbackTime = 0;
+    if (state.isPlaying) {
+        state.isPlaying = false;
+        document.getElementById("playBtn").textContent = "再生 / 停止";
+    }
+    state.audioElement.pause();
+    state.audioElement.currentTime = 0;
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
     document.getElementById("seekBar").value = "0";
@@ -385,19 +365,19 @@ function updateLastPlayedNoteIndex() {
     state.lastActiveMIndex = -1;
 }
 
-// 【超高速化版】DOM全体検索を廃止し、変更があった部分のみ直接更新する再生処理
 let prevActiveM = -1;
 let prevActiveN = -1;
 
+// HTML5 AudioタグのcurrentTimeを基準にした超軽量同期ループ
 function updatePlayback() {
     if (!state.isPlaying) return;
-    state.playbackTime = state.audioContext.currentTime - state.startTime;
-    const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
+    
+    const currentTime = state.audioElement.currentTime;
+    const duration = state.audioElement.duration || 0;
 
     if (duration > 0) {
-        if (state.playbackTime >= duration) { resetPlay(); return; }
-        document.getElementById("seekBar").value = (state.playbackTime / duration) * 100;
-        document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
+        document.getElementById("seekBar").value = (currentTime / duration) * 100;
+        document.getElementById("currentTimeDisplay").textContent = `${currentTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
 
     const course = state.courses[state.currentCourse];
@@ -416,14 +396,14 @@ function updatePlayback() {
         const sub = course.measures[m].length;
         const stepTime = mTime / sub;
 
-        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + mTime) {
+        if (currentTime >= accumulatedTime && currentTime < accumulatedTime + mTime) {
             activeMIndex = m;
         }
 
         for (let n = 0; n < sub; n++) {
             const noteTime = accumulatedTime + (n * stepTime);
             
-            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
+            if (currentTime >= noteTime && currentTime < noteTime + stepTime) {
                 activeNIndex = n;
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
                     const v = course.measures[m][n];
@@ -436,7 +416,7 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
-    // 小節のスクロール
+    // 小節スクロール
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
         const targetMIndex = Math.max(0, activeMIndex - 1);
@@ -446,9 +426,8 @@ function updatePlayback() {
         }
     }
 
-    // 【高速化の核心】前回と異なる部分だけクラスを付け替える（全検索ゼロ）
+    // ハイライトの高速更新
     if (prevActiveM !== activeMIndex || prevActiveN !== activeNIndex) {
-        // 前回のハイライトを消す
         if (prevActiveM !== -1) {
             const prevRow = document.querySelector(`.measure-row[data-measure-index="${prevActiveM}"]`);
             if (prevRow) {
@@ -460,7 +439,6 @@ function updatePlayback() {
             }
         }
 
-        // 今回のハイライトをつける
         if (activeMIndex !== -1) {
             const curRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
             if (curRow) {
