@@ -157,7 +157,7 @@ const state = {
     audioContext: null,
     audioSource: null,
     playbackTime: 0,
-    lastCellIndex: -1
+    lastPlayedNoteIndex: -1 // 再生中に効果音を鳴らした最後のノート位置を追跡
 };
 
 let soundBuffers = { don: null, ka: null };
@@ -212,7 +212,6 @@ async function loadSoundEffects() {
 function playSound(type) {
     if (!state.audioContext) return;
     
-    // ブラウザの自動再生ポリシー対策：停止中なら再開させる
     if (state.audioContext.state === "suspended") {
         state.audioContext.resume();
     }
@@ -228,7 +227,6 @@ function playSound(type) {
 }
 
 function setupEventListeners() {
-    // タッチやクリックによる自動再生制限の強制解除
     document.addEventListener("pointerdown", () => {
         if (state.audioContext && state.audioContext.state === "suspended") {
             state.audioContext.resume();
@@ -575,8 +573,6 @@ function updateCellContent(cell, noteValue) {
 
     const img = document.createElement("img");
     if (noteValue === 1) img.src = "assets/img/Don.png";
-    else if (noteValue ===-1 /* dummy check */) {} // standard fallback
-    if (noteValue === 1) img.src = "assets/img/Don.png";
     else if (noteValue === 2) img.src = "assets/img/Ka.png";
     else if (noteValue === 3) img.src = "assets/img/Don_2.png";
     else if (noteValue === 4) img.src = "assets/img/Ka_2.png";
@@ -625,7 +621,7 @@ function pausePlay() {
 function resetPlay() {
     pausePlay();
     state.playbackTime = 0;
-    state.lastCellIndex = -1;
+    state.lastPlayedNoteIndex = -1;
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
     currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
 }
@@ -640,6 +636,46 @@ function updatePlayback() {
         return;
     }
     currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
+
+    // --- 再生位置に合わせてノーツの効果音を自動再生する処理 ---
+    const courseData = state.courses[state.currentCourse];
+    const measures = courseData.measures;
+    let currentBpm = state.bpm;
+    
+    // 全体の経過時間から、現在の小節・音符位置を逆算して判定
+    let accumulatedTime = -state.offset;
+    let noteGlobalIndex = 0;
+    let played = false;
+
+    for (let m = 0; m < measures.length; m++) {
+        // BPM変化の適用
+        const bpmChange = courseData.bpmChanges.find(item => item.measure === m + 1);
+        if (bpmChange) currentBpm = bpmChange.bpm;
+
+        // 1小節にかかる時間（4/4拍子基準：60 / BPM * 4秒）
+        const measureTime = (60 / currentBpm) * 4;
+        const subdivision = measures[m].length;
+        const stepTime = measureTime / subdivision;
+
+        for (let n = 0; n < subdivision; n++) {
+            const noteTime = accumulatedTime + (n * stepTime);
+            
+            // 現在の再生時間がノートのタイミングを過ぎていて、かつまだ鳴らしていない場合
+            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
+                if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
+                    const noteVal = measures[m][n];
+                    if (noteVal > 0 && noteVal <= 4) {
+                        playSound(noteVal.toString());
+                    }
+                    state.lastPlayedNoteIndex = noteGlobalIndex;
+                }
+                played = true;
+            }
+            noteGlobalIndex++;
+        }
+        accumulatedTime += measureTime;
+    }
+
     requestAnimationFrame(updatePlayback);
 }
 
