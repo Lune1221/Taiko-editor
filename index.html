@@ -90,6 +90,7 @@
             box-sizing: border-box;
             background-repeat: no-repeat;
             transform: translateZ(0);
+            position: relative;
         }
         
         .note-cell.renda-start {
@@ -115,6 +116,16 @@
             border-left: none;
         }
 
+        /* 風船用の2マスまたぎスタイル */
+        .note-cell.balloon-start {
+            border-radius: 4px 0 0 4px;
+            border-right: none;
+        }
+        .note-cell.balloon-end {
+            border-radius: 0 4px 4px 0;
+            border-left: none;
+        }
+
         .note-cell img {
             width: 28px;
             height: 28px;
@@ -123,6 +134,17 @@
         .note-cell.playing-note img {
             filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
             transform: scale(1.15) translateZ(0);
+        }
+        .balloon-count-badge {
+            position: absolute;
+            bottom: -2px;
+            right: 2px;
+            font-size: 10px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 0 3px;
+            border-radius: 3px;
+            pointer-events: none;
         }
         .seek-bar-container {
             margin-top: 8px;
@@ -262,11 +284,11 @@ const state = {
     subdivision: 16,
     currentCourse: "oni",
     courses: {
-        easy: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
-        normal: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
-        hard: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
-        oni: { exists: true, measures: [Array(16).fill(0)], bpmChanges: [] },
-        edit: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] }
+        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] }
     },
     selectedTool: "1",
     audioFile: null,
@@ -438,12 +460,25 @@ function parseTJA(text) {
     let activeCourse = "oni";
     let inCourse = false;
     let measureBuffer = "";
+    let balloonList = [];
 
-    Object.keys(state.courses).forEach(k => { state.courses[k].measures = []; state.courses[k].bpmChanges = []; state.courses[k].exists = false; });
+    Object.keys(state.courses).forEach(k => { 
+        state.courses[k].measures = []; 
+        state.courses[k].balloonCounts = {}; 
+        state.courses[k].bpmChanges = []; 
+        state.courses[k].exists = false; 
+    });
 
     for (let line of lines) {
         line = line.trim();
         if (!line || line.startsWith("//")) continue;
+
+        if (line.toUpperCase().startsWith("#BALLOON")) {
+            const parts = line.split(/[ ,]+/);
+            parts.shift();
+            balloonList = parts.map(p => parseInt(p)).filter(p => !isNaN(p));
+            continue;
+        }
 
         if (line.includes(":") && !inCourse) {
             const [key, ...valArr] = line.split(":");
@@ -455,7 +490,12 @@ function parseTJA(text) {
             if (k === "COURSE" && courseMap[val.toUpperCase()]) activeCourse = courseMap[val.toUpperCase()];
         }
 
-        if (line.toUpperCase() === "#START") { inCourse = true; measureBuffer = ""; continue; }
+        if (line.toUpperCase() === "#START") { 
+            inCourse = true; 
+            measureBuffer = ""; 
+            balloonList = [];
+            continue; 
+        }
         if (line.toUpperCase() === "#END") { 
             inCourse = false; 
             if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push([0]);
@@ -475,7 +515,17 @@ function parseTJA(text) {
                 if (char === ",") {
                     let notes = [];
                     for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
+                    
+                    const mIdx = state.courses[activeCourse].measures.length;
                     state.courses[activeCourse].measures.push(notes.length > 0 ? notes : [0]);
+
+                    // 風船カウントの割り当て
+                    notes.forEach((n, nIdx) => {
+                        if (n === 7 && balloonList.length > 0) {
+                            state.courses[activeCourse].balloonCounts[`${mIdx}-${nIdx}`] = balloonList.shift();
+                        }
+                    });
+
                     measureBuffer = "";
                 } else {
                     measureBuffer += char;
@@ -497,7 +547,8 @@ function updateUIFromState() {
     
     const container = document.getElementById("measuresContainer");
     container.innerHTML = "";
-    const measures = state.courses[state.currentCourse].measures;
+    const course = state.courses[state.currentCourse];
+    const measures = course.measures;
 
     let isInsideRenda = false;
 
@@ -535,20 +586,68 @@ function updateUIFromState() {
                 }
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
+            } else if (note === 7) {
+                cell.classList.add("balloon-start");
+                const countKey = `${mIndex}-${nIndex}`;
+                if (course.balloonCounts[countKey] === undefined) {
+                    course.balloonCounts[countKey] = 5; // 初期打数
+                }
+                const badge = document.createElement("span");
+                badge.className = "balloon-count-badge";
+                badge.textContent = course.balloonCounts[countKey];
+                cell.appendChild(badge);
+            } else if (note === 9) {
+                // 風船の2マス目（継続用）
+                cell.classList.add("balloon-end");
             }
 
             updateCellContent(cell, note);
 
             cell.addEventListener("click", () => {
-                state.courses[state.currentCourse].exists = true;
-                if (state.selectedTool === "delete") measures[mIndex][nIndex] = 0;
-                else {
+                course.exists = true;
+                if (state.selectedTool === "delete") {
+                    if (note === 7) {
+                        delete course.balloonCounts[`${mIndex}-${nIndex}`];
+                        measures[mIndex][nIndex] = 0;
+                        if (nIndex + 1 < measure.length && measure[nIndex + 1] === 9) {
+                            measures[mIndex][nIndex + 1] = 0;
+                        }
+                    } else if (note === 9) {
+                        measures[mIndex][nIndex] = 0;
+                        if (nIndex - 1 >= 0 && measures[mIndex][nIndex - 1] === 7) {
+                            delete course.balloonCounts[`${mIndex}-${nIndex - 1}`];
+                            measures[mIndex][nIndex - 1] = 0;
+                        }
+                    } else {
+                        measures[mIndex][nIndex] = 0;
+                    }
+                } else {
                     const val = parseInt(state.selectedTool);
-                    measures[mIndex][nIndex] = val;
-                    if (val >= 1 && val <= 4) {
-                        playSound(state.selectedTool);
-                    } else if (val === 5 || val === 6 || val === 7) {
-                        playSound("1"); // 置いた時もドン音
+                    if (val === 7) {
+                        // 風船は必ず2マス必要なので、後ろにスペースがあるか確認
+                        if (nIndex + 1 < measure.length) {
+                            measures[mIndex][nIndex] = 7;
+                            measures[mIndex][nIndex + 1] = 9; // 9を風船の2マス目とする
+                            const countKey = `${mIndex}-${nIndex}`;
+                            const currentCnt = course.balloonCounts[countKey] || 5;
+                            const newCnt = prompt("風船のヒット数（打数）を入力してください:", currentCnt);
+                            if (newCnt !== null) {
+                                course.balloonCounts[countKey] = parseInt(newCnt) || 5;
+                            }
+                            playSound("1");
+                        } else {
+                            alert("風船は2マス必要なため、小節の末尾には置けません。");
+                        }
+                    } else if (val === 9) {
+                        // 直接9単体は置けないようにする
+                        return;
+                    } else {
+                        measures[mIndex][nIndex] = val;
+                        if (val >= 1 && val <= 4) {
+                            playSound(state.selectedTool);
+                        } else if (val === 5 || val === 6) {
+                            playSound("1");
+                        }
                     }
                 }
                 updateUIFromState();
@@ -557,13 +656,11 @@ function updateUIFromState() {
         });
         row.appendChild(notesDiv);
 
-        // 小節ごとの追加・削除ボタン
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "measure-actions";
 
         const insertBtn = document.createElement("button");
         insertBtn.textContent = "+挿入";
-        insertBtn.title = "この小節の後に小節を追加";
         insertBtn.addEventListener("click", () => {
             measures.splice(mIndex + 1, 0, Array(state.subdivision).fill(0));
             updateUIFromState();
@@ -572,7 +669,6 @@ function updateUIFromState() {
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.className = "danger";
-        deleteBtn.title = "この小節を削除";
         deleteBtn.addEventListener("click", () => {
             if (measures.length > 1) {
                 measures.splice(mIndex, 1);
@@ -700,7 +796,8 @@ function updatePlayback() {
                 }
                 currentRendaStart = -1;
             } else if (val === 7) {
-                if (state.playbackTime >= noteTime && state.playbackTime <= noteTime + stepTime) {
+                // 風船が始まってから2マス分の時間（2 * stepTime）を風船区間とする
+                if (state.playbackTime >= noteTime && state.playbackTime <= noteTime + (stepTime * 2)) {
                     isCurrentlyInRenda = true;
                 }
             }
@@ -732,7 +829,7 @@ function updatePlayback() {
                     if (val >= 1 && val <= 4) {
                         playSound(val.toString());
                     } else if (val === 7) {
-                        playSound("1"); // 風船ヒット時はドン音
+                        playSound("1");
                     }
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
@@ -742,7 +839,6 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
-    // 連打・風船区間中の音をドン音に変更
     if (isCurrentlyInRenda) {
         if (state.playbackTime - lastRendaSoundTime >= 0.1) {
             playSound("1");
@@ -791,13 +887,44 @@ function generateTJA() {
     if (state.audioFile) tja += `WAVE:${state.audioFile.name}\n`;
     tja += `\n`;
     const m = { easy: "0", normal: "1", hard: "2", oni: "3", edit: "4" };
+    
     Object.keys(state.courses).forEach(k => {
-        if (!state.courses[k].exists) return;
-        tja += `COURSE:${m[k]}\n#START\n`;
-        state.courses[k].measures.forEach((meas, idx) => {
-            const b = state.courses[k].bpmChanges.find(i => i.measure === idx + 1);
+        const course = state.courses[k];
+        if (!course.exists) return;
+        
+        tja += `COURSE:${m[k]}\n`;
+        
+        // 風船の打数を集めて #BALLOON を出力
+        let balloonCountsArr = [];
+        course.measures.forEach((meas, mIdx) => {
+            meas.forEach((note, nIdx) => {
+                if (note === 7) {
+                    const cnt = course.balloonCounts[`${mIdx}-${nIdx}`] || 5;
+                    balloonCountsArr.push(cnt);
+                }
+            });
+        });
+        if (balloonCountsArr.length > 0) {
+            tja += `#BALLOON ${balloonCountsArr.join(",")}\n`;
+        }
+
+        tja += `#START\n`;
+        course.measures.forEach((meas, idx) => {
+            const b = course.bpmChanges.find(i => i.measure === idx + 1);
             if (b) tja += `#BPMCHANGE ${b.bpm}\n`;
-            tja += meas.join("") + ",\n";
+            
+            // 内部用の9（風船2マス目）をTJA出力時は0または空白として扱う、あるいはTJA規格に合わせる
+            // 一般的なTJAでは風船は 7 のみ書き、2マス目は通常の音符を置かないようにするか、
+            // エディタ専用に 7 のあとのスペースを出力しないように調整します。
+            let lineStr = "";
+            for (let i = 0; i < meas.length; i++) {
+                if (meas[i] === 9) {
+                    lineStr += "0"; // 2マス目はデータ上0に変換して出力
+                } else {
+                    lineStr += meas[i];
+                }
+            }
+            tja += lineStr + ",\n";
         });
         tja += `#END\n\n`;
     });
