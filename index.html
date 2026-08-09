@@ -27,7 +27,7 @@
             padding: 10px;
             border-radius: 8px;
             align-items: center;
-            contain: content; /* 高速化のための描画最適化 */
+            contain: content;
         }
         .measure-row.playing {
             background-color: rgba(255, 235, 59, 0.15);
@@ -68,10 +68,9 @@
             flex-shrink: 0;
             box-sizing: border-box;
             background-repeat: no-repeat;
-            transform: translateZ(0); /* ハードウェアアクセラレーション */
+            transform: translateZ(0);
         }
         
-        /* --- 連打ノーツ（1枚のRenda.pngから切り分け） --- */
         .note-cell.renda-start {
             background-image: url('assets/img/Renda.png');
             background-position: left center;
@@ -493,7 +492,7 @@ function updateUIFromState() {
             cell.className = "note-cell";
             cell.dataset.noteIndex = nIndex;
             
-            if (note === 5 || note === 6) {
+            if (note === 5 || note === 6 || note === 7) {
                 isInsideRenda = true;
                 cell.classList.add("renda-start");
             } else if (note === 8) {
@@ -566,14 +565,14 @@ function resetPlay() {
     state.playbackTime = 0;
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
-    state.lastRendaSoundTime = 0; // 連打用タイマーのリセット
+    lastRendaSoundTime = 0;
     document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
 
 let lastHighlightedRow = null;
 let lastHighlightedCell = null;
-let lastRendaSoundTime = 0; // 連打中の音の間隔を制御する変数
+let lastRendaSoundTime = 0;
 
 function clearMeasureHighlight() {
     if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
@@ -608,7 +607,10 @@ function updatePlayback() {
     
     let activeMIndex = -1;
     let activeNIndex = -1;
-    let isCurrentlyInRenda = false; // 再生中の位置が連打内かどうか
+    let isCurrentlyInRenda = false;
+
+    // 全体のノーツを走査して、現在の再生時間がどの連打区間内にあるかを正確に判定する
+    let globalInsideRenda = false;
 
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
@@ -622,26 +624,19 @@ function updatePlayback() {
             activeMIndex = m;
         }
 
-        // 簡易的な小節内の連打判定フラグ
-        let measureHasRenda = false;
-        let lineInRenda = false;
-        for (let n = 0; n < sub; n++) {
-            const val = course.measures[m][n];
-            if (val === 5 || val === 6) lineInRenda = true;
-            if (lineInRenda) measureHasRenda = true;
-            if (val === 8) lineInRenda = false;
-        }
-
         for (let n = 0; n < sub; n++) {
             const noteTime = accumulatedTime + (n * stepTime);
             const val = course.measures[m][n];
 
-            // 連打開始・本体・大連打などを連打中とみなす
-            if (val === 5 || val === 6 || val === 7) isInsideRenda = true;
-            
+            // 連打・風船の開始 (5, 6, 7) でフラグON
+            if (val === 5 || val === 6 || val === 7) {
+                globalInsideRenda = true;
+            }
+
+            // 現在の再生時間がこのノーツのタイミングにいる場合
             if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
                 activeNIndex = n;
-                if (isInsideRenda) {
+                if (globalInsideRenda) {
                     isCurrentlyInRenda = true;
                 }
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
@@ -652,18 +647,25 @@ function updatePlayback() {
                 }
             }
 
-            if (val === 8) isInsideRenda = false;
+            // 終点 (8) に到達したらフラグOFF（このノーツの判定が終わった後、または終点自体でオフ）
+            if (val === 8) {
+                globalInsideRenda = false;
+            }
+
             noteGlobalIndex++;
         }
         accumulatedTime += mTime;
     }
 
-    // 連打区間にいる場合、一定間隔（例: 0.12秒ごと ≒ 連打のテンポ感）で音を鳴らす処理
+    // 連打区間にいる間だけ、0.1秒（秒間10回）ごとにドン音を鳴らす
     if (isCurrentlyInRenda) {
-        if (state.playbackTime - lastRendaSoundTime >= 0.05) {
-            playSound("1"); // ドンの音を鳴らす
+        if (state.playbackTime - lastRendaSoundTime >= 0.1) {
+            playSound("1");
             lastRendaSoundTime = state.playbackTime;
         }
+    } else {
+        // 連打区間を抜けたらタイマーをリセットし、次の連打ですぐ鳴るようにする
+        lastRendaSoundTime = 0;
     }
 
     // スクロール処理
