@@ -5,82 +5,106 @@ const state = {
     subdivision: 16,
     currentCourse: "oni",
     courses: {
-        easy: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
-        normal: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
-        hard: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
-        oni: { exists: true, measures: [Array(16).fill(0)], bpmChanges: [] },
-        edit: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] }
+        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} }
     },
     selectedTool: "1",
     audioFile: null,
-    audioElement: null, // HTMLのaudioタグを使用
+    audioBuffer: null,
     isPlaying: false,
+    startTime: 0,
+    audioContext: null,
+    audioSource: null,
+    playbackTime: 0,
     lastPlayedNoteIndex: -1,
     lastActiveMIndex: -1
 };
 
-let soundBuffers = { don: null, ka: null };
-let audioCtx = null;
+let soundBuffers = { don: null, ka: null, balloon: null };
 
 window.addEventListener("DOMContentLoaded", () => {
-    initAudio();
+    initAudioContext();
     loadSoundEffects();
     setupEventListeners();
     updateUIFromState();
 });
 
-function initAudio() {
+function initAudioContext() {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AudioContext();
-
-    // 音声再生用のhiddenなaudio要素を作成
-    state.audioElement = document.createElement("audio");
-    state.audioElement.addEventListener("ended", resetPlay);
+    state.audioContext = new AudioContext();
 }
 
 async function loadSoundEffects() {
     try {
-        const donRes = await fetch("./assets/audio/Neiro1_Don.ogg");
-        if (donRes.ok) {
-            soundBuffers.don = await audioCtx.decodeAudioData(await donRes.arrayBuffer());
-        }
-        const kaRes = await fetch("./assets/audio/Neiro1_Ka.ogg");
-        if (kaRes.ok) {
-            soundBuffers.ka = await audioCtx.decodeAudioData(await kaRes.arrayBuffer());
-        }
+        const donRes = await fetch("assets/audio/Neiro1_Don.ogg");
+        if (donRes.ok) soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
+        const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
+        if (kaRes.ok) soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+        const balloonRes = await fetch("assets/audio/se_balloon.ogg");
+        if (balloonRes.ok) soundBuffers.balloon = await state.audioContext.decodeAudioData(await balloonRes.arrayBuffer());
     } catch (e) {
-        console.warn("効果音の読み込みに失敗しました。", e);
+        console.warn("効果音の読み込みに失敗しました。");
     }
 }
 
 function playSound(type) {
-    if (!audioCtx || audioCtx.state === "suspended") {
-        audioCtx.resume();
-    }
-    let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
+    if (!state.audioContext || state.audioContext.state === "suspended") state.audioContext.resume();
+    let buffer = null;
+    if (type === "1" || type === "3") buffer = soundBuffers.don;
+    else if (type === "2" || type === "4") buffer = soundBuffers.ka;
+    else if (type === "balloon") buffer = soundBuffers.balloon;
+    
     if (!buffer) return;
     try {
-        const source = audioCtx.createBufferSource();
+        const source = state.audioContext.createBufferSource();
         source.buffer = buffer;
-        source.connect(audioCtx.destination);
+        source.connect(state.audioContext.destination);
         source.start(0);
     } catch(e) {}
 }
 
 function setupEventListeners() {
     document.addEventListener("pointerdown", () => {
-        if (audioCtx && audioCtx.state === "suspended") {
-            audioCtx.resume();
-        }
+        if (state.audioContext && state.audioContext.state === "suspended") state.audioContext.resume();
     }, { once: true });
 
     document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
     document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
+    document.getElementById("addBpmChangeBtn").addEventListener("click", () => {
+        const m = parseInt(document.getElementById("bpmChangeMeasure").value);
+        const b = parseFloat(document.getElementById("bpmChangeValue").value);
+        if (m > 0 && !isNaN(b)) {
+            const course = state.courses[state.currentCourse];
+            course.bpmChanges = course.bpmChanges.filter(item => item.measure !== m);
+            course.bpmChanges.push({ measure: m, bpm: b });
+            course.bpmChanges.sort((x, y) => x.measure - y.measure);
+            updateBpmChangeListUI();
+        }
+    });
+
+    document.getElementById("addMeasureBtn").addEventListener("click", () => {
+        const course = state.courses[state.currentCourse];
+        course.exists = true;
+        course.measures.push(Array(state.subdivision).fill(0));
+        updateUIFromState();
+    });
+
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("jumpMeasureInput").value);
-        if (m > 0) jumpToMeasure(m - 1);
+        if(m > 0) {
+            const targetRow = document.querySelector(`.measure-row[data-measure-index="${m - 1}"]`);
+            if(targetRow) {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetRow.style.transition = 'background-color 0.5s';
+                targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                setTimeout(() => targetRow.style.backgroundColor = '', 1000);
+            }
+        }
     });
 
     document.getElementById("subdivisionSelect").addEventListener("change", (e) => {
@@ -145,44 +169,27 @@ function setupEventListeners() {
 
     const seekBar = document.getElementById("seekBar");
     seekBar.addEventListener("input", (e) => {
-        if (!state.audioElement.duration) return;
-        const newTime = (parseFloat(e.target.value) / 100) * state.audioElement.duration;
-        state.audioElement.currentTime = newTime;
+        if (!state.audioBuffer) return;
+        state.playbackTime = (parseFloat(e.target.value) / 100) * state.audioBuffer.duration;
+        
+        if (state.isPlaying) {
+            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+            state.audioSource = state.audioContext.createBufferSource();
+            state.audioSource.buffer = state.audioBuffer;
+            state.audioSource.connect(state.audioContext.destination);
+            state.audioSource.start(0, state.playbackTime);
+            state.startTime = state.audioContext.currentTime - state.playbackTime;
+        }
         updateLastPlayedNoteIndex();
     });
-}
-
-function jumpToMeasure(mIndex) {
-    const course = state.courses[state.currentCourse];
-    let currentBpm = state.bpm;
-    let targetTime = -state.offset;
-
-    const targetM = Math.min(mIndex, course.measures.length - 1);
-    for (let i = 0; i < targetM; i++) {
-        const bChange = course.bpmChanges.find(bc => bc.measure === i + 1);
-        if (bChange) currentBpm = bChange.bpm;
-        targetTime += (60 / currentBpm) * 4;
-    }
-
-    if (targetTime < 0) targetTime = 0;
-
-    const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetM}"]`);
-    if (targetRow) {
-        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    if (state.audioElement.duration) {
-        state.audioElement.currentTime = Math.min(targetTime, state.audioElement.duration);
-    }
-    updateLastPlayedNoteIndex();
 }
 
 async function loadAudioFile(file) {
     state.audioFile = file;
     document.getElementById("audioFileName").textContent = file.name;
-    const url = URL.createObjectURL(file);
-    state.audioElement.src = url;
-    state.audioElement.load();
+    try {
+        state.audioBuffer = await state.audioContext.decodeAudioData(await file.arrayBuffer());
+    } catch (err) {}
 }
 
 function parseTJA(text) {
@@ -192,12 +199,26 @@ function parseTJA(text) {
     let activeCourse = "oni";
     let inCourse = false;
     let measureBuffer = "";
+    let balloonList = [];
 
-    Object.keys(state.courses).forEach(k => { state.courses[k].measures = []; state.courses[k].bpmChanges = []; state.courses[k].exists = false; });
+    Object.keys(state.courses).forEach(k => { 
+        state.courses[k].measures = []; 
+        state.courses[k].balloonCounts = {}; 
+        state.courses[k].bpmChanges = []; 
+        state.courses[k].scrollChanges = {}; 
+        state.courses[k].exists = false; 
+    });
 
     for (let line of lines) {
         line = line.trim();
         if (!line || line.startsWith("//")) continue;
+
+        if (line.toUpperCase().startsWith("#BALLOON")) {
+            const parts = line.split(/[ ,]+/);
+            parts.shift();
+            balloonList = parts.map(p => parseInt(p)).filter(p => !isNaN(p));
+            continue;
+        }
 
         if (line.includes(":") && !inCourse) {
             const [key, ...valArr] = line.split(":");
@@ -209,7 +230,12 @@ function parseTJA(text) {
             if (k === "COURSE" && courseMap[val.toUpperCase()]) activeCourse = courseMap[val.toUpperCase()];
         }
 
-        if (line.toUpperCase() === "#START") { inCourse = true; measureBuffer = ""; continue; }
+        if (line.toUpperCase() === "#START") { 
+            inCourse = true; 
+            measureBuffer = ""; 
+            balloonList = [];
+            continue; 
+        }
         if (line.toUpperCase() === "#END") { 
             inCourse = false; 
             if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push([0]);
@@ -218,9 +244,18 @@ function parseTJA(text) {
         }
 
         if (inCourse) {
-            if (line.startsWith("#BPMCHANGE")) {
+            if (line.toUpperCase().startsWith("#BPMCHANGE")) {
                 const b = parseFloat(line.split(" ")[1]);
-                if (!isNaN(b)) state.courses[activeCourse].bpmChanges.push({ measure: state.courses[activeCourse].measures.length + 1, bpm: b });
+                if (!isNaN(b)) {
+                    state.courses[activeCourse].bpmChanges.push({ measure: state.courses[activeCourse].measures.length + 1, bpm: b });
+                }
+                continue;
+            }
+            if (line.toUpperCase().startsWith("#SCROLL")) {
+                const s = parseFloat(line.split(" ")[1]);
+                if (!isNaN(s)) {
+                    state.courses[activeCourse].scrollChanges[state.courses[activeCourse].measures.length] = s;
+                }
                 continue;
             }
             if (line.startsWith("#")) continue;
@@ -229,7 +264,16 @@ function parseTJA(text) {
                 if (char === ",") {
                     let notes = [];
                     for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
+                    
+                    const mIdx = state.courses[activeCourse].measures.length;
                     state.courses[activeCourse].measures.push(notes.length > 0 ? notes : [0]);
+
+                    notes.forEach((n, nIdx) => {
+                        if (n === 7 && balloonList.length > 0) {
+                            state.courses[activeCourse].balloonCounts[`${mIdx}-${nIdx}`] = balloonList.shift();
+                        }
+                    });
+
                     measureBuffer = "";
                 } else {
                     measureBuffer += char;
@@ -242,18 +286,96 @@ function parseTJA(text) {
     if(firstCourse) state.currentCourse = firstCourse;
 }
 
+function updateBpmChangeListUI() {
+    const listDiv = document.getElementById("bpmChangeList");
+    listDiv.innerHTML = "";
+    const course = state.courses[state.currentCourse];
+    course.bpmChanges.forEach(item => {
+        const row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.marginBottom = "2px";
+        row.innerHTML = `<span>#${item.measure} : ${item.bpm} BPM</span>`;
+        
+        const btn = document.createElement("button");
+        btn.textContent = "×";
+        btn.style.cssText = "background:#c0392b; color:#fff; border:none; padding:1px 5px; border-radius:3px; cursor:pointer; font-size:10px;";
+        btn.onclick = () => {
+            course.bpmChanges = course.bpmChanges.filter(i => i.measure !== item.measure);
+            updateBpmChangeListUI();
+        };
+        row.appendChild(btn);
+        listDiv.appendChild(row);
+    });
+}
+
 function updateUIFromState() {
     document.querySelectorAll(".course-tab").forEach(tab => {
         const k = tab.getAttribute("data-course");
         tab.classList.toggle("has-data", state.courses[k].exists);
         tab.classList.toggle("active", k === state.currentCourse);
     });
+
+    updateBpmChangeListUI();
     
     const container = document.getElementById("measuresContainer");
     container.innerHTML = "";
-    const measures = state.courses[state.currentCourse].measures;
+    const course = state.courses[state.currentCourse];
+    const measures = course.measures;
 
-    let isInsideRenda = false;
+    let flatNotes = [];
+    measures.forEach((measure, mIndex) => {
+        measure.forEach((note, nIndex) => {
+            flatNotes.push({ mIndex, nIndex, note });
+        });
+    });
+
+    let pendingStarts = [];
+
+    flatNotes.forEach((item, idx) => {
+        if (item.note === 5 || item.note === 6) {
+            pendingStarts.push({ type: 'renda', flatIdx: idx });
+        } else if (item.note === 7) {
+            pendingStarts.push({ type: 'balloon', flatIdx: idx });
+        } else if (item.note === 8) {
+            if (pendingStarts.length > 0) {
+                let start = pendingStarts.shift();
+                flatNotes[start.flatIdx].status = `${start.type}-start`;
+                flatNotes[idx].status = `${start.type}-end`;
+                for (let i = start.flatIdx + 1; i < idx; i++) {
+                    if (!flatNotes[i].status) {
+                        flatNotes[i].status = start.type === 'balloon' ? 'balloon-body' : 'renda-body';
+                    }
+                }
+            }
+        }
+    });
+
+    let noteStatusMap = {};
+    let balloonEndpointMap = {};
+
+    flatNotes.forEach(item => {
+        if (item.status) {
+            noteStatusMap[`${item.mIndex}-${item.nIndex}`] = item.status;
+        }
+    });
+
+    let activeBalloonStarts = [];
+    flatNotes.forEach((item, idx) => {
+        if (item.note === 7) {
+            activeBalloonStarts.push(idx);
+        } else if (item.note === 8 && activeBalloonStarts.length > 0) {
+            let startIdx = activeBalloonStarts.shift();
+            let startItem = flatNotes[startIdx];
+            if (startIdx + 1 < flatNotes.length) {
+                let neighbor = flatNotes[startIdx + 1];
+                noteStatusMap[`${startItem.mIndex}-${startItem.nIndex}`] = 'balloon-left';
+                noteStatusMap[`${neighbor.mIndex}-${neighbor.nIndex}`] = 'balloon-right';
+            }
+            balloonEndpointMap[`${item.mIndex}-${item.nIndex}`] = true;
+        }
+    });
 
     measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
@@ -279,49 +401,132 @@ function updateUIFromState() {
             cell.className = "note-cell";
             cell.dataset.noteIndex = nIndex;
             
-            if (note === 5 || note === 6) {
-                isInsideRenda = true;
+            const statusKey = `${mIndex}-${nIndex}`;
+            const status = noteStatusMap[statusKey];
+
+            if (status === 'renda-start' || note === 5 || note === 6) {
                 cell.classList.add("renda-start");
-            } else if (note === 8) {
-                if (isInsideRenda) {
-                    cell.classList.add("renda-end");
-                    isInsideRenda = false;
-                }
-            } else if (isInsideRenda) {
+            } else if (status === 'renda-body') {
                 cell.classList.add("renda-body");
+            } else if (status === 'renda-end') {
+                cell.classList.add("renda-end");
+            } else if (status === 'balloon-left' || note === 7) {
+                cell.classList.add("balloon-left");
+                const countKey = `${mIndex}-${nIndex}`;
+                if (course.balloonCounts[countKey] === undefined) {
+                    course.balloonCounts[countKey] = 5;
+                }
+                const badge = document.createElement("span");
+                badge.className = "balloon-count-badge";
+                badge.textContent = course.balloonCounts[countKey];
+                cell.appendChild(badge);
+            } else if (status === 'balloon-right') {
+                cell.classList.add("balloon-right");
             }
 
-            updateCellContent(cell, note);
+            if (balloonEndpointMap[statusKey]) {
+                cell.classList.add("balloon-endpoint-overlay");
+            }
+
+            updateCellContent(cell, note, status);
 
             cell.addEventListener("click", () => {
-                state.courses[state.currentCourse].exists = true;
-                if (state.selectedTool === "delete") measures[mIndex][nIndex] = 0;
-                else {
+                course.exists = true;
+                if (state.selectedTool === "delete") {
+                    if (note === 7) {
+                        delete course.balloonCounts[`${mIndex}-${nIndex}`];
+                        measures[mIndex][nIndex] = 0;
+                    } else {
+                        measures[mIndex][nIndex] = 0;
+                    }
+                } else {
                     const val = parseInt(state.selectedTool);
-                    measures[mIndex][nIndex] = val;
-                    if (val >= 1 && val <= 4) playSound(state.selectedTool);
+                    if (val === 8) {
+                        measures[mIndex][nIndex] = 8;
+                    } else if (val === 7) {
+                        measures[mIndex][nIndex] = 7;
+                        const countKey = `${mIndex}-${nIndex}`;
+                        const currentCnt = course.balloonCounts[countKey] || 5;
+                        const newCnt = prompt("風船のヒット数（打数）を入力してください:", currentCnt);
+                        if (newCnt !== null) {
+                            course.balloonCounts[countKey] = parseInt(newCnt) || 5;
+                        }
+                        playSound("1");
+                    } else {
+                        measures[mIndex][nIndex] = val;
+                        if (val >= 1 && val <= 4) {
+                            playSound(state.selectedTool);
+                        } else if (val === 5 || val === 6) {
+                            playSound("1");
+                        }
+                    }
                 }
                 updateUIFromState();
             });
             notesDiv.appendChild(cell);
         });
         row.appendChild(notesDiv);
+
+        const scrollDiv = document.createElement("div");
+        scrollDiv.style.cssText = "display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 11px; color: #aaa;";
+        scrollDiv.innerHTML = `<span>SCROLL:</span>`;
+        const scrollInput = document.createElement("input");
+        scrollInput.type = "number";
+        scrollInput.step = "0.1";
+        scrollInput.value = course.scrollChanges[mIndex] !== undefined ? course.scrollChanges[mIndex] : 1.0;
+        scrollInput.style.cssText = "width: 45px; padding: 3px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff; font-size: 11px;";
+        scrollInput.addEventListener("change", (e) => {
+            const val = parseFloat(e.target.value);
+            if (!isNaN(val) && val !== 1.0) {
+                course.scrollChanges[mIndex] = val;
+            } else {
+                delete course.scrollChanges[mIndex];
+            }
+        });
+        scrollDiv.appendChild(scrollInput);
+        row.appendChild(scrollDiv);
+
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "measure-actions";
+
+        const insertBtn = document.createElement("button");
+        insertBtn.textContent = "+挿入";
+        insertBtn.addEventListener("click", () => {
+            measures.splice(mIndex + 1, 0, Array(state.subdivision).fill(0));
+            updateUIFromState();
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "削除";
+        deleteBtn.className = "danger";
+        deleteBtn.addEventListener("click", () => {
+            if (measures.length > 1) {
+                measures.splice(mIndex, 1);
+                updateUIFromState();
+            } else {
+                alert("最後の小節は削除できません。");
+            }
+        });
+
+        actionsDiv.appendChild(insertBtn);
+        actionsDiv.appendChild(deleteBtn);
+        row.appendChild(actionsDiv);
+
         container.appendChild(row);
     });
 }
 
-function updateCellContent(cell, val) {
+function updateCellContent(cell, val, status) {
     if (val >= 1 && val <= 4) {
         const img = document.createElement("img");
         if (val === 1) img.src = "assets/img/Don.png";
         else if (val === 2) img.src = "assets/img/Ka.png";
         else if (val === 3) {
             img.src = "assets/img/Don_2.png";
-            img.classList.add("big-note");
-        }
-        else if (val === 4) {
+            img.className = "big-note";
+        } else if (val === 4) {
             img.src = "assets/img/Ka_2.png";
-            img.classList.add("big-note");
+            img.className = "big-note";
         }
         cell.appendChild(img);
     }
@@ -331,62 +536,201 @@ function togglePlay() {
     if (state.isPlaying) {
         state.isPlaying = false;
         document.getElementById("playBtn").textContent = "再生 / 停止";
-        state.audioElement.pause();
+        if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+        if (state.audioBuffer) {
+            state.playbackTime = state.audioContext.currentTime - state.startTime;
+            if (state.playbackTime < 0) state.playbackTime = 0;
+        }
         clearMeasureHighlight();
     } else {
-        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        if (state.audioContext.state === "suspended") state.audioContext.resume();
         state.isPlaying = true;
         document.getElementById("playBtn").textContent = "一時停止";
-        state.audioElement.play().catch(e => console.log("再生エラー:", e));
+        if (state.audioBuffer) {
+            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+            state.audioSource = state.audioContext.createBufferSource();
+            state.audioSource.buffer = state.audioBuffer;
+            state.audioSource.connect(state.audioContext.destination);
+            state.audioSource.start(0, Math.max(0, state.playbackTime));
+        }
+        state.startTime = state.audioContext.currentTime - state.playbackTime;
         requestAnimationFrame(updatePlayback);
     }
 }
 
 function resetPlay() {
-    if (state.isPlaying) {
-        state.isPlaying = false;
-        document.getElementById("playBtn").textContent = "再生 / 停止";
-    }
-    state.audioElement.pause();
-    state.audioElement.currentTime = 0;
+    if (state.isPlaying) togglePlay();
+    state.playbackTime = 0;
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
+    lastRendaSoundTime = 0;
+    activeBalloonData = null;
+    playedBalloonPopKeys.clear();
     document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
 
+let lastHighlightedRow = null;
+let lastHighlightedCell = null;
+let lastRendaSoundTime = 0;
+let activeBalloonData = null;
+let playedBalloonPopKeys = new Set();
+
 function clearMeasureHighlight() {
-    document.querySelectorAll(".measure-row.playing").forEach(r => r.classList.remove("playing"));
+    if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
+    if (lastHighlightedCell) lastHighlightedCell.classList.remove("playing-note");
+    lastHighlightedRow = null;
+    lastHighlightedCell = null;
+    document.querySelectorAll(".measure-row").forEach(r => r.classList.remove("playing"));
     document.querySelectorAll(".note-cell.playing-note").forEach(c => c.classList.remove("playing-note"));
 }
 
 function updateLastPlayedNoteIndex() {
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
+    lastRendaSoundTime = 0;
+    activeBalloonData = null;
+    playedBalloonPopKeys.clear();
 }
-
-let prevActiveM = -1;
-let prevActiveN = -1;
 
 function updatePlayback() {
     if (!state.isPlaying) return;
-    
-    const currentTime = state.audioElement.currentTime;
-    const duration = state.audioElement.duration || 0;
+    state.playbackTime = state.audioContext.currentTime - state.startTime;
+    const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
     if (duration > 0) {
-        document.getElementById("seekBar").value = (currentTime / duration) * 100;
-        document.getElementById("currentTimeDisplay").textContent = `${currentTime.toFixed(2)} / ${duration.toFixed(2)}s`;
+        if (duration > 0 && state.playbackTime >= duration) { resetPlay(); return; }
+        document.getElementById("seekBar").value = (state.playbackTime / duration) * 100;
+        document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
 
     const course = state.courses[state.currentCourse];
     let currentBpm = state.bpm;
-    let accumulatedTime = -state.offset;
     let noteGlobalIndex = 0;
     
     let activeMIndex = -1;
     let activeNIndex = -1;
+    let isCurrentlyInRenda = false;
 
+    let scanBpm = state.bpm;
+    let scanTime = -state.offset;
+    let currentRendaStart = -1;
+    let foundBalloonThisFrame = null;
+
+    for (let m = 0; m < course.measures.length; m++) {
+        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
+        if (bChange) scanBpm = bChange.bpm;
+        const mTime = (60 / scanBpm) * 4;
+        const sub = course.measures[m].length;
+        const stepTime = mTime / sub;
+
+        for (let n = 0; n < sub; n++) {
+            const noteTime = scanTime + (n * stepTime);
+            const val = course.measures[m][n];
+
+            if (val === 5 || val === 6) {
+                currentRendaStart = noteTime;
+            } else if (val === 8 && currentRendaStart !== -1) {
+                if (state.playbackTime >= currentRendaStart && state.playbackTime <= noteTime) {
+                    isCurrentlyInRenda = true;
+                }
+                currentRendaStart = -1;
+            } else if (val === 7) {
+                const countKey = `${m}-${n}`;
+                const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
+                
+                let balloonEndTime = noteTime + 1.0;
+                let foundEnd = false;
+                let sm = m, sn = n + 1;
+                let searchLimit = 0;
+                while (sm < course.measures.length && searchLimit < 100) {
+                    while (sn < course.measures[sm].length) {
+                        let nextVal = course.measures[sm][sn];
+                        if (nextVal === 8 || nextVal > 0) {
+                            let tempBpm = scanBpm;
+                            let tempTime = -state.offset;
+                            let targetTimeAcc = 0;
+                            for (let tm = 0; tm <= sm; tm++) {
+                                let tBChange = course.bpmChanges.find(i => i.measure === tm + 1);
+                                if (tBChange) tempBpm = tBChange.bpm;
+                                let tmTime = (60 / tempBpm) * 4;
+                                let tSub = course.measures[tm].length;
+                                let tStep = tmTime / tSub;
+                                for (let tn = 0; tn < tSub; tn++) {
+                                    if (tm === sm && tn === sn) {
+                                        targetTimeAcc = tempTime + (tn * tStep);
+                                        foundEnd = true;
+                                        break;
+                                    }
+                                }
+                                if (foundEnd) break;
+                                tempTime += tmTime;
+                            }
+                            if (foundEnd) {
+                                balloonEndTime = targetTimeAcc;
+                            }
+                            break;
+                        }
+                        sn++;
+                        searchLimit++;
+                    }
+                    if (foundEnd) break;
+                    sm++;
+                    sn = 0;
+                }
+
+                let balloonDuration = Math.max(0.2, balloonEndTime - noteTime);
+                let balloonStartActive = noteTime + 0.02;
+
+                if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
+                    isCurrentlyInRenda = true;
+                    let interval = balloonDuration / Math.max(1, balloonCount);
+                    foundBalloonThisFrame = {
+                        key: countKey,
+                        interval: interval,
+                        startTime: balloonStartActive,
+                        endTime: noteTime + balloonDuration
+                    };
+                } else if (state.playbackTime > noteTime + balloonDuration) {
+                    if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
+                        if (!playedBalloonPopKeys.has(countKey)) {
+                            playSound("balloon");
+                            playedBalloonPopKeys.add(countKey);
+                        }
+                    }
+                }
+            }
+            noteGlobalIndex++;
+        }
+        scanTime += mTime;
+    }
+
+    if (foundBalloonThisFrame) {
+        if (!activeBalloonData || activeBalloonData.key !== foundBalloonThisFrame.key) {
+            activeBalloonData = foundBalloonThisFrame;
+            lastRendaSoundTime = activeBalloonData.startTime;
+        }
+
+        if (state.playbackTime - lastRendaSoundTime >= activeBalloonData.interval) {
+            playSound("1");
+            lastRendaSoundTime += activeBalloonData.interval;
+        }
+    } else {
+        activeBalloonData = null;
+        if (!isCurrentlyInRenda) {
+            lastRendaSoundTime = 0;
+        }
+    }
+
+    if (isCurrentlyInRenda && !foundBalloonThisFrame) {
+        if (state.playbackTime - lastRendaSoundTime >= 0.11) {
+            playSound("1");
+            lastRendaSoundTime = state.playbackTime;
+        }
+    }
+
+    noteGlobalIndex = 0;
+    let accumulatedTime = -state.offset;
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) currentBpm = bChange.bpm;
@@ -395,18 +739,22 @@ function updatePlayback() {
         const sub = course.measures[m].length;
         const stepTime = mTime / sub;
 
-        if (currentTime >= accumulatedTime && currentTime < accumulatedTime + mTime) {
+        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + mTime) {
             activeMIndex = m;
         }
 
         for (let n = 0; n < sub; n++) {
             const noteTime = accumulatedTime + (n * stepTime);
-            
-            if (currentTime >= noteTime && currentTime < noteTime + stepTime) {
+            const val = course.measures[m][n];
+
+            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
                 activeNIndex = n;
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
-                    const v = course.measures[m][n];
-                    if (v >= 1 && v <= 4) playSound(v.toString());
+                    if (val >= 1 && val <= 4) {
+                        playSound(val.toString());
+                    } else if (val === 7) {
+                        playSound("1");
+                    }
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
             }
@@ -424,31 +772,26 @@ function updatePlayback() {
         }
     }
 
-    if (prevActiveM !== activeMIndex || prevActiveN !== activeNIndex) {
-        if (prevActiveM !== -1) {
-            const prevRow = document.querySelector(`.measure-row[data-measure-index="${prevActiveM}"]`);
-            if (prevRow) {
-                if (prevActiveM !== activeMIndex) prevRow.classList.remove("playing");
-                if (prevActiveN !== -1) {
-                    const prevCell = prevRow.querySelector(`.note-cell[data-note-index="${prevActiveN}"]`);
-                    if (prevCell) prevCell.classList.remove("playing-note");
-                }
-            }
-        }
+    const curRow = activeMIndex !== -1 ? document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`) : null;
+    const curCell = (curRow && activeNIndex !== -1) ? curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`) : null;
 
-        if (activeMIndex !== -1) {
-            const curRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
-            if (curRow) {
-                curRow.classList.add("playing");
-                if (activeNIndex !== -1) {
-                    const curCell = curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`);
-                    if (curCell) curCell.classList.add("playing-note");
-                }
-            }
-        }
+    if (lastHighlightedRow && lastHighlightedRow !== curRow) {
+        lastHighlightedRow.classList.remove("playing");
+    }
+    if (lastHighlightedCell && lastHighlightedCell !== curCell) {
+        lastHighlightedCell.classList.remove("playing-note");
+    }
 
-        prevActiveM = activeMIndex;
-        prevActiveN = activeNIndex;
+    if (curRow) {
+        curRow.classList.add("playing");
+        lastHighlightedRow = curRow;
+    }
+
+    if (curCell && activeMIndex !== -1 && course.measures[activeMIndex][activeNIndex] !== 0) {
+        curCell.classList.add("playing-note");
+        lastHighlightedCell = curCell;
+    } else {
+        lastHighlightedCell = null;
     }
 
     requestAnimationFrame(updatePlayback);
@@ -459,13 +802,40 @@ function generateTJA() {
     if (state.audioFile) tja += `WAVE:${state.audioFile.name}\n`;
     tja += `\n`;
     const m = { easy: "0", normal: "1", hard: "2", oni: "3", edit: "4" };
+    
     Object.keys(state.courses).forEach(k => {
-        if (!state.courses[k].exists) return;
-        tja += `COURSE:${m[k]}\n#START\n`;
-        state.courses[k].measures.forEach((meas, idx) => {
-            const b = state.courses[k].bpmChanges.find(i => i.measure === idx + 1);
+        const course = state.courses[k];
+        if (!course.exists) return;
+        
+        tja += `COURSE:${m[k]}\n`;
+        
+        let balloonCountsArr = [];
+        course.measures.forEach((meas, mIdx) => {
+            meas.forEach((note, nIdx) => {
+                if (note === 7) {
+                    const cnt = course.balloonCounts[`${mIdx}-${nIdx}`] !== undefined ? course.balloonCounts[`${mIdx}-${nIdx}`] : 5;
+                    balloonCountsArr.push(cnt);
+                }
+            });
+        });
+        if (balloonCountsArr.length > 0) {
+            tja += `#BALLOON ${balloonCountsArr.join(",")}\n`;
+        }
+
+        tja += `#START\n`;
+        course.measures.forEach((meas, idx) => {
+            const b = course.bpmChanges.find(i => i.measure === idx + 1);
             if (b) tja += `#BPMCHANGE ${b.bpm}\n`;
-            tja += meas.join("") + ",\n";
+            
+            if (course.scrollChanges[idx] !== undefined) {
+                tja += `#SCROLL ${course.scrollChanges[idx]}\n`;
+            }
+            
+            let lineStr = "";
+            for (let i = 0; i < meas.length; i++) {
+                lineStr += meas[i];
+            }
+            tja += lineStr + ",\n";
         });
         tja += `#END\n\n`;
     });
