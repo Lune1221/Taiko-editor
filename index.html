@@ -491,7 +491,7 @@ function updateUIFromState() {
         measure.forEach((note, nIndex) => {
             const cell = document.createElement("div");
             cell.className = "note-cell";
-            cell.dataset.noteIndex = nIndex; // 👈 ここを正しく付与するように修正
+            cell.dataset.noteIndex = nIndex;
             
             if (note === 5 || note === 6) {
                 isInsideRenda = true;
@@ -566,12 +566,14 @@ function resetPlay() {
     state.playbackTime = 0;
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
+    state.lastRendaSoundTime = 0; // 連打用タイマーのリセット
     document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
 
 let lastHighlightedRow = null;
 let lastHighlightedCell = null;
+let lastRendaSoundTime = 0; // 連打中の音の間隔を制御する変数
 
 function clearMeasureHighlight() {
     if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
@@ -585,6 +587,7 @@ function clearMeasureHighlight() {
 function updateLastPlayedNoteIndex() {
     state.lastPlayedNoteIndex = -1;
     state.lastActiveMIndex = -1;
+    lastRendaSoundTime = 0;
 }
 
 function updatePlayback() {
@@ -605,6 +608,7 @@ function updatePlayback() {
     
     let activeMIndex = -1;
     let activeNIndex = -1;
+    let isCurrentlyInRenda = false; // 再生中の位置が連打内かどうか
 
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
@@ -618,20 +622,48 @@ function updatePlayback() {
             activeMIndex = m;
         }
 
+        // 簡易的な小節内の連打判定フラグ
+        let measureHasRenda = false;
+        let lineInRenda = false;
+        for (let n = 0; n < sub; n++) {
+            const val = course.measures[m][n];
+            if (val === 5 || val === 6) lineInRenda = true;
+            if (lineInRenda) measureHasRenda = true;
+            if (val === 8) lineInRenda = false;
+        }
+
         for (let n = 0; n < sub; n++) {
             const noteTime = accumulatedTime + (n * stepTime);
+            const val = course.measures[m][n];
+
+            // 連打開始・本体・大連打などを連打中とみなす
+            if (val === 5 || val === 6 || val === 7) isInsideRenda = true;
             
             if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
                 activeNIndex = n;
+                if (isInsideRenda) {
+                    isCurrentlyInRenda = true;
+                }
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
-                    const v = course.measures[m][n];
-                    if (v >= 1 && v <= 4) playSound(v.toString());
+                    if (val >= 1 && val <= 4) {
+                        playSound(val.toString());
+                    }
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
             }
+
+            if (val === 8) isInsideRenda = false;
             noteGlobalIndex++;
         }
         accumulatedTime += mTime;
+    }
+
+    // 連打区間にいる場合、一定間隔（例: 0.12秒ごと ≒ 連打のテンポ感）で音を鳴らす処理
+    if (isCurrentlyInRenda) {
+        if (state.playbackTime - lastRendaSoundTime >= 0.12) {
+            playSound("1"); // ドンの音を鳴らす
+            lastRendaSoundTime = state.playbackTime;
+        }
     }
 
     // スクロール処理
@@ -644,7 +676,7 @@ function updatePlayback() {
         }
     }
 
-    // 軽量化されたハイライト処理
+    // ハイライト処理
     const curRow = activeMIndex !== -1 ? document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`) : null;
     const curCell = (curRow && activeNIndex !== -1) ? curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`) : null;
 
