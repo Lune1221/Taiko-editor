@@ -805,7 +805,7 @@ function updateLastPlayedNoteIndex() {
     playedBalloonPopKeys.clear();
 }
 
-// 【最適化】重い再帰・ループ計算を1回にまとめ、フレーム毎の負荷を激減させた再生処理
+// 【超軽量化版】小節切替時のみスクロール＆クラス変更を行うことでラグを完全解消
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
@@ -818,7 +818,6 @@ function updatePlayback() {
     }
 
     const course = state.courses[state.currentCourse];
-    let currentBpm = state.bpm;
     let noteGlobalIndex = 0;
     
     let activeMIndex = -1;
@@ -831,7 +830,6 @@ function updatePlayback() {
     let foundBalloonThisFrame = null;
     let currentFraction = "4/4";
 
-    // 1回のループでタイミング計算とノート判定を効率的に実行
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) scanBpm = bChange.bpm;
@@ -881,8 +879,6 @@ function updatePlayback() {
             } else if (val === 7) {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-                
-                // 重い全探索を省くため、簡易的にデフォルトの風船継続時間を1秒に設定（ラグ防止）
                 let balloonDuration = 1.0;
                 let balloonStartActive = noteTime + 0.02;
 
@@ -933,30 +929,26 @@ function updatePlayback() {
         }
     }
 
+    // 小節変更時のみスクロールとクラス付けを更新（高負荷対策）
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
-        const targetMIndex = Math.max(0, activeMIndex - 1);
-        const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetMIndex}"]`);
+        
+        if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
+        const targetRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
         if (targetRow) {
+            targetRow.classList.add("playing");
+            lastHighlightedRow = targetRow;
             targetRow.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     }
 
+    // ノート単位のハイライト更新
     const curRow = activeMIndex !== -1 ? document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`) : null;
     const curCell = (curRow && activeNIndex !== -1) ? curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`) : null;
 
-    if (lastHighlightedRow && lastHighlightedRow !== curRow) {
-        lastHighlightedRow.classList.remove("playing");
-    }
     if (lastHighlightedCell && lastHighlightedCell !== curCell) {
         lastHighlightedCell.classList.remove("playing-note");
     }
-
-    if (curRow) {
-        curRow.classList.add("playing");
-        lastHighlightedRow = curRow;
-    }
-
     if (curCell && activeMIndex !== -1 && course.measures[activeMIndex][activeNIndex] !== 0) {
         curCell.classList.add("playing-note");
         lastHighlightedCell = curCell;
