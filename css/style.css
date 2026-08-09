@@ -1,4 +1,3 @@
-/* --- レイアウト・ヘッダー --- */
 .editor-header {
     display: flex;
     justify-content: space-between;
@@ -12,8 +11,6 @@
     align-items: center;
     gap: 20px;
 }
-
-/* --- 小節・セル --- */
 .measure-row {
     display: flex;
     margin-bottom: 10px;
@@ -64,7 +61,6 @@
 }
 
 /* --- 連打ノーツ（1枚のRenda.pngから切り分け） --- */
-/* css/ フォルダ内から見て assets/ を参照するため ../ を付与 */
 .note-cell.renda-start {
     background-image: url('../assets/img/Renda.png');
     background-position: left center;
@@ -88,7 +84,6 @@
     border-left: none;
 }
 
-/* --- ノーツ表示・再生エフェクト --- */
 .note-cell img {
     width: 28px;
     height: 28px;
@@ -99,8 +94,6 @@
     transform: scale(1.15);
     transition: all 0.05s ease;
 }
-
-/* --- 再生・シークバー --- */
 .seek-bar-container {
     margin-top: 8px;
     display: flex;
