@@ -525,6 +525,7 @@ function parseTJA(text) {
             for (let char of line) {
                 if (char === ",") {
                     let notes = [];
+                    // TJA上では風船の終点は「8」なのでそのまま読み込む
                     for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
                     
                     const mIdx = state.courses[activeCourse].measures.length;
@@ -594,6 +595,9 @@ function updateUIFromState() {
                 if (isInsideRenda) {
                     cell.classList.add("renda-end");
                     isInsideRenda = false;
+                } else if (isInsideBalloon) {
+                    cell.classList.add("balloon-end");
+                    isInsideBalloon = false;
                 }
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
@@ -608,13 +612,8 @@ function updateUIFromState() {
                 badge.className = "balloon-count-badge";
                 badge.textContent = course.balloonCounts[countKey];
                 cell.appendChild(badge);
-            } else if (note === 9) {
-                if (isInsideBalloon) {
-                    cell.classList.add("balloon-end");
-                    isInsideBalloon = false;
-                }
             } else if (isInsideBalloon) {
-                cell.classList.add("renda-body"); // 風船の胴体部分も連打と同様につなげる
+                cell.classList.add("renda-body");
             }
 
             updateCellContent(cell, note);
@@ -625,12 +624,12 @@ function updateUIFromState() {
                     if (note === 7) {
                         delete course.balloonCounts[`${mIndex}-${nIndex}`];
                         measures[mIndex][nIndex] = 0;
-                        if (nIndex + 1 < measure.length && measure[nIndex + 1] === 9) {
+                        if (nIndex + 1 < measure.length && measure[nIndex + 1] === 8) {
                             measures[mIndex][nIndex + 1] = 0;
                         } else if (nIndex + 1 >= measure.length && mIndex + 1 < measures.length) {
-                            if (measures[mIndex + 1][0] === 9) measures[mIndex + 1][0] = 0;
+                            if (measures[mIndex + 1][0] === 8) measures[mIndex + 1][0] = 0;
                         }
-                    } else if (note === 9) {
+                    } else if (note === 8) {
                         measures[mIndex][nIndex] = 0;
                         if (nIndex - 1 >= 0 && measures[mIndex][nIndex - 1] === 7) {
                             delete course.balloonCounts[`${mIndex}-${nIndex - 1}`];
@@ -652,10 +651,10 @@ function updateUIFromState() {
                         let targetMeasure = measures[mIndex];
                         if (nIndex + 1 < targetMeasure.length) {
                             targetMeasure[nIndex] = 7;
-                            targetMeasure[nIndex + 1] = 9;
+                            targetMeasure[nIndex + 1] = 8; // 終点は共通で8
                         } else if (mIndex + 1 < measures.length) {
                             targetMeasure[nIndex] = 7;
-                            measures[mIndex + 1][0] = 9;
+                            measures[mIndex + 1][0] = 8; // 終点は共通で8
                         } else {
                             alert("次の小節が存在しないため、小節の末尾に風船を置けません。先に小節を追加してください。");
                             return;
@@ -668,7 +667,7 @@ function updateUIFromState() {
                             course.balloonCounts[countKey] = parseInt(newCnt) || 5;
                         }
                         playSound("1");
-                    } else if (val === 9) {
+                    } else if (val === 8) {
                         return;
                     } else {
                         measures[mIndex][nIndex] = val;
@@ -840,7 +839,8 @@ function updatePlayback() {
                 while (sm < course.measures.length && searchLimit < 100) {
                     while (sn < course.measures[sm].length) {
                         let nextVal = course.measures[sm][sn];
-                        if (nextVal === 9 || nextVal > 0) {
+                        // 終点である「8」または通常の音符で終了とみなす
+                        if (nextVal === 8 || nextVal > 0) {
                             let tempBpm = scanBpm;
                             let tempTime = -state.offset;
                             let targetTimeAcc = 0;
@@ -1023,7 +1023,10 @@ function generateTJA() {
             
             let lineStr = "";
             for (let i = 0; i < meas.length; i++) {
-                lineStr += meas[i];
+                // 内部で風船終点として「9」を使っていた箇所もそのまま「8」として出力
+                let n = meas[i];
+                if (n === 9) n = 8;
+                lineStr += n;
             }
             tja += lineStr + ",\n";
         });
