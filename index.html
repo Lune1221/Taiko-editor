@@ -73,15 +73,12 @@
                     <button class="tool-btn" data-note="4">
                         <img src="assets/img/Ka_2.png" alt="大カ"> 大カ
                     </button>
-                    <!-- 連打開始（左側1/3のマーク） -->
                     <button class="tool-btn" data-note="5" style="font-size: 12px;">
                         <span class="tool-renda-icon"></span> 連打開始(5)
                     </button>
-                    <!-- 風船（左半分のマーク） -->
                     <button class="tool-btn" data-note="7" style="font-size: 12px;">
                         <span class="tool-balloon-icon"></span> 風船(7)
                     </button>
-                    <!-- 連打終了（マークなし） -->
                     <button class="tool-btn" data-note="8" style="font-size: 12px;">
                         連打終了(8)
                     </button>
@@ -152,11 +149,11 @@ const state = {
     subdivision: 16,
     currentCourse: "oni",
     courses: {
-        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
-        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
-        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
-        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
-        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] }
+        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
+        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} }
     },
     selectedTool: "1",
     audioFile: null,
@@ -352,6 +349,7 @@ function parseTJA(text) {
         state.courses[k].measures = []; 
         state.courses[k].balloonCounts = {}; 
         state.courses[k].bpmChanges = []; 
+        state.courses[k].scrollChanges = {}; 
         state.courses[k].exists = false; 
     });
 
@@ -397,6 +395,13 @@ function parseTJA(text) {
                 }
                 continue;
             }
+            if (line.toUpperCase().startsWith("#SCROLL")) {
+                const s = parseFloat(line.split(" ")[1]);
+                if (!isNaN(s)) {
+                    state.courses[activeCourse].scrollChanges[state.courses[activeCourse].measures.length] = s;
+                }
+                continue;
+            }
             if (line.startsWith("#")) continue;
 
             for (let char of line) {
@@ -437,7 +442,6 @@ function updateBpmChangeListUI() {
         row.style.marginBottom = "2px";
         row.innerHTML = `<span>#${item.measure} : ${item.bpm} BPM</span>`;
         
-        const delBtn = document.createElement("button2"); // 簡易削除用
         const btn = document.createElement("button");
         btn.textContent = "×";
         btn.style.cssText = "background:#c0392b; color:#fff; border:none; padding:1px 5px; border-radius:3px; cursor:pointer; font-size:10px;";
@@ -606,6 +610,26 @@ function updateUIFromState() {
             notesDiv.appendChild(cell);
         });
         row.appendChild(notesDiv);
+
+        // 小節ごとのスクロール倍率設定
+        const scrollDiv = document.createElement("div");
+        scrollDiv.style.cssText = "display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 11px; color: #aaa;";
+        scrollDiv.innerHTML = `<span>SCROLL:</span>`;
+        const scrollInput = document.createElement("input");
+        scrollInput.type = "number";
+        scrollInput.step = "0.1";
+        scrollInput.value = course.scrollChanges[mIndex] !== undefined ? course.scrollChanges[mIndex] : 1.0;
+        scrollInput.style.cssText = "width: 45px; padding: 3px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff; font-size: 11px;";
+        scrollInput.addEventListener("change", (e) => {
+            const val = parseFloat(e.target.value);
+            if (!isNaN(val) && val !== 1.0) {
+                course.scrollChanges[mIndex] = val;
+            } else {
+                delete course.scrollChanges[mIndex];
+            }
+        });
+        scrollDiv.appendChild(scrollInput);
+        row.appendChild(scrollDiv);
 
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "measure-actions";
@@ -947,6 +971,10 @@ function generateTJA() {
         course.measures.forEach((meas, idx) => {
             const b = course.bpmChanges.find(i => i.measure === idx + 1);
             if (b) tja += `#BPMCHANGE ${b.bpm}\n`;
+            
+            if (course.scrollChanges[idx] !== undefined) {
+                tja += `#SCROLL ${course.scrollChanges[idx]}\n`;
+            }
             
             let lineStr = "";
             for (let i = 0; i < meas.length; i++) {
