@@ -1,1 +1,1 @@
-https://lu1221.f5.si
+https://help.lu1221.f5.si
