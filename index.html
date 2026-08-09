@@ -812,10 +812,10 @@ function updatePlayback() {
             } else if (val === 7) {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-                // 風船が割れるまでの大まかな時間を算出（1打あたり0.1秒など、あるいは風船の終わりまで）
-                // ここでは「風船の音符位置から、風船の打数に応じた時間（打数 × 0.1秒など）」または次の音符手前まで判定するように制限します
-                let balloonDuration = balloonCount * 0.12; 
-                if (state.playbackTime >= noteTime && state.playbackTime <= noteTime + balloonDuration) {
+                // 風船が始まってから、打数×間隔の時間が経過するまでの間だけ連打音を鳴らす（最初の頭の音の位置を含めない）
+                let balloonStartActive = noteTime + 0.05; // 最初のノーツ自体の発音タイミングと被らないよう少しずらす
+                let balloonDuration = balloonCount * 0.11; 
+                if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
                     isCurrentlyInRenda = true;
                 }
             }
@@ -848,11 +848,8 @@ function updatePlayback() {
                     if (val >= 1 && val <= 4) {
                         playSound(val.toString());
                     } else if (val === 7) {
-                        const countKey = `${m}-${n}`;
-                        const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-                        if (balloonCount > 0) {
-                            playSound("1");
-                        }
+                        // 風船の頭の音
+                        playSound("1");
                     }
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
@@ -863,7 +860,7 @@ function updatePlayback() {
     }
 
     if (isCurrentlyInRenda) {
-        if (state.playbackTime - lastRendaSoundTime >= 0.1) {
+        if (state.playbackTime - lastRendaSoundTime >= 0.11) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
         }
