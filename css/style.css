@@ -147,6 +147,27 @@ main {
     pointer-events: none;
 }
 
+/* ツールボックス内の連打・風船を譜面風に切り出し表示するスタイル */
+.tool-btn .tool-renda-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    background-image: url('../assets/img/Renda.png');
+    background-position: left center;
+    background-size: 300% 100%; /* 左側1/3を使用 */
+    border-radius: 3px 0 0 3px;
+}
+
+.tool-btn .tool-balloon-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    background-image: url('../assets/img/Balloon.png');
+    background-position: left center;
+    background-size: 200% 100%; /* 左半分を使用 */
+    border-radius: 3px 0 0 3px;
+}
+
 .tool-btn.active {
     border-color: #4a90e2;
     background-color: #2c3e50;
