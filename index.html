@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taiko Chart Editor</title>
     <link rel="stylesheet" href="style.css">
-    <!-- JSZipの読み込み -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
@@ -64,9 +63,7 @@
                     <input type="number" id="bpmChangeValue" value="150" min="1" max="999">
                 </div>
                 <button id="addBpmChangeBtn" class="btn secondary full-width">BPM変化を追加</button>
-                <div id="bpmChangeList" class="bpm-list">
-                    <!-- 追加されたBPM変化がここに一覧表示されます -->
-                </div>
+                <div id="bpmChangeList" class="bpm-list"></div>
             </section>
 
             <section class="panel">
@@ -100,6 +97,15 @@
 
         <!-- メイン：譜面エディタ・ビュー -->
         <section class="editor-container">
+            <!-- 難易度切り替えタブ -->
+            <div class="course-tabs">
+                <button class="course-tab" data-course="easy">かんたん</button>
+                <button class="course-tab" data-course="normal">ふつう</button>
+                <button class="course-tab" data-course="hard">むずかしい</button>
+                <button class="course-tab active" data-course="oni">おに</button>
+                <button class="course-tab" data-course="edit">裏おに</button>
+            </div>
+
             <div class="editor-header">
                 <span id="currentTimeDisplay">0.00 / 0.00s</span>
                 <div class="zoom-controls">
