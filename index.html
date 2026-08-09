@@ -149,11 +149,11 @@ const state = {
     subdivision: 16,
     currentCourse: "oni",
     courses: {
-        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
-        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
-        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
-        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} },
-        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {} }
+        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
+        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
+        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
+        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
+        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} }
     },
     selectedTool: "1",
     audioFile: null,
@@ -344,12 +344,14 @@ function parseTJA(text) {
     let inCourse = false;
     let measureBuffer = "";
     let balloonList = [];
+    let currentMeasureFraction = "4/4";
 
     Object.keys(state.courses).forEach(k => { 
         state.courses[k].measures = []; 
         state.courses[k].balloonCounts = {}; 
         state.courses[k].bpmChanges = []; 
         state.courses[k].scrollChanges = {}; 
+        state.courses[k].measureChanges = {};
         state.courses[k].exists = false; 
     });
 
@@ -378,11 +380,12 @@ function parseTJA(text) {
             inCourse = true; 
             measureBuffer = ""; 
             balloonList = [];
+            currentMeasureFraction = "4/4";
             continue; 
         }
         if (line.toUpperCase() === "#END") { 
             inCourse = false; 
-            if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push([0]);
+            if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push(Array(16).fill(0));
             state.courses[activeCourse].exists = true;
             continue; 
         }
@@ -402,6 +405,14 @@ function parseTJA(text) {
                 }
                 continue;
             }
+            if (line.toUpperCase().startsWith("#MEASURE")) {
+                const mStr = line.split(/[ ,]+/)[1];
+                if (mStr) {
+                    currentMeasureFraction = mStr;
+                    state.courses[activeCourse].measureChanges[state.courses[activeCourse].measures.length] = mStr;
+                }
+                continue;
+            }
             if (line.startsWith("#")) continue;
 
             for (let char of line) {
@@ -410,9 +421,27 @@ function parseTJA(text) {
                     for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
                     
                     const mIdx = state.courses[activeCourse].measures.length;
-                    state.courses[activeCourse].measures.push(notes.length > 0 ? notes : [0]);
+                    
+                    // 拍子に基づいて適切な長さの配列を確保（ノート数が合わない場合はパディング/切り捨て）
+                    let targetLen = state.subdivision;
+                    const parts = currentMeasureFraction.split("/");
+                    if (parts.length === 2) {
+                        const num = parseFloat(parts[0]);
+                        const den = parseFloat(parts[1]);
+                        if (!isNaN(num) && !isNaN(den) && den > 0) {
+                            targetLen = Math.round(state.subdivision * (num / (den / 4)));
+                            if (targetLen < 1) targetLen = state.subdivision;
+                        }
+                    }
 
-                    notes.forEach((n, nIdx) => {
+                    let finalNotes = Array(targetLen).fill(0);
+                    notes.forEach((n, idx) => {
+                        if (idx < targetLen) finalNotes[idx] = n;
+                    });
+
+                    state.courses[activeCourse].measures.push(finalNotes);
+
+                    finalNotes.forEach((n, nIdx) => {
                         if (n === 7 && balloonList.length > 0) {
                             state.courses[activeCourse].balloonCounts[`${mIdx}-${nIdx}`] = balloonList.shift();
                         }
@@ -611,9 +640,50 @@ function updateUIFromState() {
         });
         row.appendChild(notesDiv);
 
-        // 小節ごとのスクロール倍率設定
+        // 小節ごとの設定グループ（MEASURE と SCROLL）
+        const settingsDiv = document.createElement("div");
+        settingsDiv.style.cssText = "display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 11px; color: #aaa;";
+
+        // MEASURE設定
+        const measureDiv = document.createElement("div");
+        measureDiv.style.cssText = "display: flex; align-items: center; gap: 3px;";
+        measureDiv.innerHTML = `<span>拍子:</span>`;
+        const measureInput = document.createElement("input");
+        measureInput.type = "text";
+        measureInput.value = course.measureChanges[mIndex] !== undefined ? course.measureChanges[mIndex] : "4/4";
+        measureInput.style.cssText = "width: 45px; padding: 3px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff; font-size: 11px; text-align: center;";
+        measureInput.addEventListener("change", (e) => {
+            const val = e.target.value.trim();
+            if (val && val !== "4/4") {
+                course.measureChanges[mIndex] = val;
+            } else {
+                delete course.measureChanges[mIndex];
+            }
+            // 拍子が変わったので配列の長さを再調整
+            const parts = val.split("/");
+            if (parts.length === 2) {
+                const num = parseFloat(parts[0]);
+                const den = parseFloat(parts[1]);
+                if (!isNaN(num) && !isNaN(den) && den > 0) {
+                    let targetLen = Math.round(state.subdivision * (num / (den / 4)));
+                    if (targetLen < 1) targetLen = state.subdivision;
+                    
+                    let oldArr = course.measures[mIndex];
+                    let newArr = Array(targetLen).fill(0);
+                    oldArr.forEach((n, idx) => {
+                        if (idx < targetLen) newArr[idx] = n;
+                    });
+                    course.measures[mIndex] = newArr;
+                    updateUIFromState();
+                }
+            }
+        });
+        measureDiv.appendChild(measureInput);
+        settingsDiv.appendChild(measureDiv);
+
+        // SCROLL設定
         const scrollDiv = document.createElement("div");
-        scrollDiv.style.cssText = "display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 11px; color: #aaa;";
+        scrollDiv.style.cssText = "display: flex; align-items: center; gap: 3px;";
         scrollDiv.innerHTML = `<span>SCROLL:</span>`;
         const scrollInput = document.createElement("input");
         scrollInput.type = "number";
@@ -629,7 +699,9 @@ function updateUIFromState() {
             }
         });
         scrollDiv.appendChild(scrollInput);
-        row.appendChild(scrollDiv);
+        settingsDiv.appendChild(scrollDiv);
+
+        row.appendChild(settingsDiv);
 
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "measure-actions";
@@ -761,11 +833,24 @@ function updatePlayback() {
     let scanTime = -state.offset;
     let currentRendaStart = -1;
     let foundBalloonThisFrame = null;
+    let currentFraction = "4/4";
 
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) scanBpm = bChange.bpm;
-        const mTime = (60 / scanBpm) * 4;
+        if (course.measureChanges[m]) currentFraction = course.measureChanges[m];
+
+        let mMultiplier = 1.0;
+        const parts = currentFraction.split("/");
+        if (parts.length === 2) {
+            const num = parseFloat(parts[0]);
+            const den = parseFloat(parts[1]);
+            if (!isNaN(num) && !isNaN(den) && den > 0) {
+                mMultiplier = num / (den / 4);
+            }
+        }
+
+        const mTime = (60 / scanBpm) * 4 * mMultiplier;
         const sub = course.measures[m].length;
         const stepTime = mTime / sub;
 
@@ -788,6 +873,7 @@ function updatePlayback() {
                 let foundEnd = false;
                 let sm = m, sn = n + 1;
                 let searchLimit = 0;
+                let innerFrac = "4/4";
                 while (sm < course.measures.length && searchLimit < 100) {
                     while (sn < course.measures[sm].length) {
                         let nextVal = course.measures[sm][sn];
@@ -798,7 +884,15 @@ function updatePlayback() {
                             for (let tm = 0; tm <= sm; tm++) {
                                 let tBChange = course.bpmChanges.find(i => i.measure === tm + 1);
                                 if (tBChange) tempBpm = tBChange.bpm;
-                                let tmTime = (60 / tempBpm) * 4;
+                                if (course.measureChanges[tm]) innerFrac = course.measureChanges[tm];
+                                let tMult = 1.0;
+                                let tp = innerFrac.split("/");
+                                if (tp.length === 2) {
+                                    let n_num = parseFloat(tp[0]);
+                                    let n_den = parseFloat(tp[1]);
+                                    if (!isNaN(n_num) && !isNaN(n_den) && n_den > 0) tMult = n_num / (n_den / 4);
+                                }
+                                let tmTime = (60 / tempBpm) * 4 * tMult;
                                 let tSub = course.measures[tm].length;
                                 let tStep = tmTime / tSub;
                                 for (let tn = 0; tn < tSub; tn++) {
@@ -876,11 +970,23 @@ function updatePlayback() {
 
     noteGlobalIndex = 0;
     let accumulatedTime = -state.offset;
+    currentFraction = "4/4";
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) currentBpm = bChange.bpm;
+        if (course.measureChanges[m]) currentFraction = course.measureChanges[m];
 
-        const mTime = (60 / currentBpm) * 4;
+        let mMultiplier = 1.0;
+        const parts = currentFraction.split("/");
+        if (parts.length === 2) {
+            const num = parseFloat(parts[0]);
+            const den = parseFloat(parts[1]);
+            if (!isNaN(num) && !isNaN(den) && den > 0) {
+                mMultiplier = num / (den / 4);
+            }
+        }
+
+        const mTime = (60 / currentBpm) * 4 * mMultiplier;
         const sub = course.measures[m].length;
         const stepTime = mTime / sub;
 
@@ -972,6 +1078,10 @@ function generateTJA() {
             const b = course.bpmChanges.find(i => i.measure === idx + 1);
             if (b) tja += `#BPMCHANGE ${b.bpm}\n`;
             
+            if (course.measureChanges[idx] !== undefined) {
+                tja += `#MEASURE ${course.measureChanges[idx]}\n`;
+            }
+
             if (course.scrollChanges[idx] !== undefined) {
                 tja += `#SCROLL ${course.scrollChanges[idx]}\n`;
             }
