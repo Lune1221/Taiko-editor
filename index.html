@@ -38,7 +38,6 @@
             color: #888;
             flex-shrink: 0;
         }
-        /* 幅が足りない場合は横スクロールさせる */
         .measure-notes {
             display: flex;
             gap: 2px;
@@ -47,7 +46,6 @@
             flex-wrap: nowrap;
             flex: 1;
         }
-        /* スクロールバーのデザイン */
         .measure-notes::-webkit-scrollbar {
             height: 6px;
         }
@@ -65,7 +63,7 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            flex-shrink: 0; /* 音符が潰れるのを防ぐ */
+            flex-shrink: 0;
             transition: all 0.1s ease;
         }
         .note-cell img {
@@ -73,7 +71,6 @@
             height: 28px;
             pointer-events: none;
         }
-        /* 再生中、現在叩かれているノーツを明るく強調する */
         .note-cell.playing-note img {
             filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
             transform: scale(1.15);
@@ -173,7 +170,6 @@
                 <span id="currentTimeDisplay" style="font-family: monospace; font-size: 16px;">0.00 / 0.00s</span>
                 
                 <div class="header-controls-right">
-                    <!-- 小節ジャンプ機能 -->
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <label style="color: #ccc; font-size: 14px;">小節移動:</label>
                         <input type="number" id="jumpMeasureInput" min="1" placeholder="例: 60" style="width: 60px; padding: 4px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff;">
@@ -221,7 +217,8 @@ const state = {
     audioContext: null,
     audioSource: null,
     playbackTime: 0,
-    lastPlayedNoteIndex: -1
+    lastPlayedNoteIndex: -1,
+    lastActiveMIndex: -1 // 直前の小節インデックスを記憶
 };
 
 let soundBuffers = { don: null, ka: null };
@@ -245,7 +242,7 @@ async function loadSoundEffects() {
         const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
         if (kaRes.ok) soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
     } catch (e) {
-        console.warn("効果音の読み込みに失敗しました。ローカル環境の場合はWebサーバー経由で開いてください。");
+        console.warn("効果音の読み込みに失敗しました。");
     }
 }
 
@@ -270,14 +267,12 @@ function setupEventListeners() {
     document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
-    // 小節ジャンプ機能
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("jumpMeasureInput").value);
         if(m > 0) {
             const targetRow = document.querySelector(`.measure-row[data-measure-index="${m - 1}"]`);
             if(targetRow) {
                 targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // ジャンプした小節を一時的にハイライト
                 targetRow.style.transition = 'background-color 0.5s';
                 targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
                 setTimeout(() => targetRow.style.backgroundColor = '', 1000);
@@ -285,10 +280,8 @@ function setupEventListeners() {
         }
     });
 
-    // 解像度変更（既存の配列を破壊しないように変更）
     document.getElementById("subdivisionSelect").addEventListener("change", (e) => {
         state.subdivision = parseInt(e.target.value);
-        // 新しく小節を追加する際の基準値にするだけで、既存の小節データは強制変換（削除）しない
     });
 
     document.querySelectorAll(".course-tab").forEach(tab => {
@@ -424,8 +417,7 @@ function parseTJA(text) {
             }
         }
     }
-    
-    // 生きているコースを自動選択
+
     const firstCourse = Object.keys(state.courses).find(k => state.courses[k].exists);
     if(firstCourse) state.currentCourse = firstCourse;
 }
@@ -453,7 +445,6 @@ function updateUIFromState() {
 
         const notesDiv = document.createElement("div");
         notesDiv.className = "measure-notes";
-        // ホイールでの横スクロールを補助
         notesDiv.addEventListener('wheel', (e) => {
             if (e.deltaY !== 0) {
                 notesDiv.scrollLeft += e.deltaY;
@@ -524,6 +515,7 @@ function resetPlay() {
     if (state.isPlaying) togglePlay();
     state.playbackTime = 0;
     state.lastPlayedNoteIndex = -1;
+    state.lastActiveMIndex = -1;
     document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
@@ -535,6 +527,7 @@ function clearMeasureHighlight() {
 
 function updateLastPlayedNoteIndex() {
     state.lastPlayedNoteIndex = -1;
+    state.lastActiveMIndex = -1;
 }
 
 function updatePlayback() {
@@ -584,6 +577,16 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
+    // 小節が切り替わった「その瞬間だけ」スクロールを実行する
+    if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
+        state.lastActiveMIndex = activeMIndex;
+        const activeRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
+        if (activeRow) {
+            // block: 'nearest' を指定することで、新しい小節が画面からはみ出た時に1小節分だけスマートにスクロール
+            activeRow.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+    }
+
     const rows = document.querySelectorAll(".measure-row");
     rows.forEach((row, idx) => {
         if (idx === activeMIndex) {
@@ -596,13 +599,6 @@ function updatePlayback() {
                     cell.classList.remove("playing-note");
                 }
             });
-            
-            // 再生中の小節が画面外にある場合は自動スクロール
-            const rect = row.getBoundingClientRect();
-            const container = document.getElementById("measuresContainer");
-            if (rect.top < container.getBoundingClientRect().top || rect.bottom > container.getBoundingClientRect().bottom) {
-                row.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
         } else {
             row.classList.remove("playing");
             row.querySelectorAll(".note-cell.playing-note").forEach(c => c.classList.remove("playing-note"));
