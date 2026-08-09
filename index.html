@@ -73,12 +73,15 @@
                     <button class="tool-btn" data-note="4">
                         <img src="assets/img/Ka_2.png" alt="大カ"> 大カ
                     </button>
+                    <!-- 連打開始（左側1/3のマーク） -->
                     <button class="tool-btn" data-note="5" style="font-size: 12px;">
                         <span class="tool-renda-icon"></span> 連打開始(5)
                     </button>
+                    <!-- 風船（左半分のマーク） -->
                     <button class="tool-btn" data-note="7" style="font-size: 12px;">
                         <span class="tool-balloon-icon"></span> 風船(7)
                     </button>
+                    <!-- 連打終了（マークなし） -->
                     <button class="tool-btn" data-note="8" style="font-size: 12px;">
                         連打終了(8)
                     </button>
@@ -149,11 +152,11 @@ const state = {
     subdivision: 16,
     currentCourse: "oni",
     courses: {
-        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
-        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
-        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
-        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} },
-        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [], scrollChanges: {}, measureChanges: {} }
+        easy: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        normal: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        hard: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        oni: { exists: true, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] },
+        edit: { exists: false, measures: [Array(16).fill(0)], balloonCounts: {}, bpmChanges: [] }
     },
     selectedTool: "1",
     audioFile: null,
@@ -166,9 +169,6 @@ const state = {
     lastPlayedNoteIndex: -1,
     lastActiveMIndex: -1
 };
-
-// 計算済みキャッシュデータ保持用
-let cachedTimingData = null;
 
 let soundBuffers = { don: null, ka: null, balloon: null };
 
@@ -219,8 +219,8 @@ function setupEventListeners() {
     }, { once: true });
 
     document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
-    document.getElementById("metaBpm").addEventListener("change", (e) => { state.bpm = parseFloat(e.target.value) || 120; buildTimingCache(); });
-    document.getElementById("metaOffset").addEventListener("input", (e) => { state.offset = parseFloat(e.target.value) || 0; buildTimingCache(); });
+    document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
+    document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
     document.getElementById("addBpmChangeBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("bpmChangeMeasure").value);
@@ -231,7 +231,6 @@ function setupEventListeners() {
             course.bpmChanges.push({ measure: m, bpm: b });
             course.bpmChanges.sort((x, y) => x.measure - y.measure);
             updateBpmChangeListUI();
-            buildTimingCache();
         }
     });
 
@@ -240,7 +239,6 @@ function setupEventListeners() {
         course.exists = true;
         course.measures.push(Array(state.subdivision).fill(0));
         updateUIFromState();
-        buildTimingCache();
     });
 
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
@@ -267,7 +265,6 @@ function setupEventListeners() {
                 state.courses[state.currentCourse].measures = [Array(state.subdivision).fill(0)];
             }
             updateUIFromState();
-            buildTimingCache();
         });
     });
 
@@ -307,7 +304,6 @@ function setupEventListeners() {
             document.getElementById("metaBpm").value = state.bpm;
             document.getElementById("metaOffset").value = state.offset;
             updateUIFromState();
-            buildTimingCache();
         } catch (err) {
             alert("エラー: ZIPファイルの解析に失敗しました。");
         }
@@ -333,7 +329,7 @@ function setupEventListeners() {
         }
         updateLastPlayedNoteIndex();
     });
-});
+}
 
 async function loadAudioFile(file) {
     state.audioFile = file;
@@ -351,14 +347,11 @@ function parseTJA(text) {
     let inCourse = false;
     let measureBuffer = "";
     let balloonList = [];
-    let currentMeasureFraction = "4/4";
 
     Object.keys(state.courses).forEach(k => { 
         state.courses[k].measures = []; 
         state.courses[k].balloonCounts = {}; 
         state.courses[k].bpmChanges = []; 
-        state.courses[k].scrollChanges = {}; 
-        state.courses[k].measureChanges = {};
         state.courses[k].exists = false; 
     });
 
@@ -387,12 +380,11 @@ function parseTJA(text) {
             inCourse = true; 
             measureBuffer = ""; 
             balloonList = [];
-            currentMeasureFraction = "4/4";
             continue; 
         }
         if (line.toUpperCase() === "#END") { 
             inCourse = false; 
-            if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push(Array(16).fill(0));
+            if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push([0]);
             state.courses[activeCourse].exists = true;
             continue; 
         }
@@ -405,21 +397,6 @@ function parseTJA(text) {
                 }
                 continue;
             }
-            if (line.toUpperCase().startsWith("#SCROLL")) {
-                const s = parseFloat(line.split(" ")[1]);
-                if (!isNaN(s)) {
-                    state.courses[activeCourse].scrollChanges[state.courses[activeCourse].measures.length] = s;
-                }
-                continue;
-            }
-            if (line.toUpperCase().startsWith("#MEASURE")) {
-                const mStr = line.split(/[ ,]+/)[1];
-                if (mStr) {
-                    currentMeasureFraction = mStr;
-                    state.courses[activeCourse].measureChanges[state.courses[activeCourse].measures.length] = mStr;
-                }
-                continue;
-            }
             if (line.startsWith("#")) continue;
 
             for (let char of line) {
@@ -428,26 +405,9 @@ function parseTJA(text) {
                     for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
                     
                     const mIdx = state.courses[activeCourse].measures.length;
-                    
-                    let targetLen = state.subdivision;
-                    const parts = currentMeasureFraction.split("/");
-                    if (parts.length === 2) {
-                        const num = parseFloat(parts[0]);
-                        const den = parseFloat(parts[1]);
-                        if (!isNaN(num) && !isNaN(den) && den > 0) {
-                            targetLen = Math.round(state.subdivision * (num / (den / 4)));
-                            if (targetLen < 1) targetLen = state.subdivision;
-                        }
-                    }
+                    state.courses[activeCourse].measures.push(notes.length > 0 ? notes : [0]);
 
-                    let finalNotes = Array(targetLen).fill(0);
-                    notes.forEach((n, idx) => {
-                        if (idx < targetLen) finalNotes[idx] = n;
-                    });
-
-                    state.courses[activeCourse].measures.push(finalNotes);
-
-                    finalNotes.forEach((n, nIdx) => {
+                    notes.forEach((n, nIdx) => {
                         if (n === 7 && balloonList.length > 0) {
                             state.courses[activeCourse].balloonCounts[`${mIdx}-${nIdx}`] = balloonList.shift();
                         }
@@ -463,64 +423,6 @@ function parseTJA(text) {
 
     const firstCourse = Object.keys(state.courses).find(k => state.courses[k].exists);
     if(firstCourse) state.currentCourse = firstCourse;
-    buildTimingCache();
-}
-
-// 【超高速化】再生前に全ノート・小節のタイムラインを一度だけ計算してキャッシュする
-function buildTimingCache() {
-    const course = state.courses[state.currentCourse];
-    let scanBpm = state.bpm;
-    let scanTime = -state.offset;
-    let currentFraction = "4/4";
-    let noteGlobalIndex = 0;
-
-    let measuresCache = [];
-    let notesCache = [];
-
-    course.measures.forEach((measure, m) => {
-        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
-        if (bChange) scanBpm = bChange.bpm;
-        if (course.measureChanges[m]) currentFraction = course.measureChanges[m];
-
-        let mMultiplier = 1.0;
-        const parts = currentFraction.split("/");
-        if (parts.length === 2) {
-            const num = parseFloat(parts[0]);
-            const den = parseFloat(parts[1]);
-            if (!isNaN(num) && !isNaN(den) && den > 0) {
-                mMultiplier = num / (den / 4);
-            }
-        }
-
-        const mTime = (60 / scanBpm) * 4 * mMultiplier;
-        const sub = measure.length;
-        const stepTime = mTime / sub;
-
-        measuresCache.push({
-            mIndex: m,
-            startTime: scanTime,
-            endTime: scanTime + mTime
-        });
-
-        measure.forEach((val, n) => {
-            const noteTime = scanTime + (n * stepTime);
-            notesCache.push({
-                globalIndex: noteGlobalIndex++,
-                mIndex: m,
-                nIndex: n,
-                time: noteTime,
-                stepTime: stepTime,
-                val: val
-            });
-        });
-
-        scanTime += mTime;
-    });
-
-    cachedTimingData = {
-        measures: measuresCache,
-        notes: notesCache
-    };
 }
 
 function updateBpmChangeListUI() {
@@ -535,13 +437,13 @@ function updateBpmChangeListUI() {
         row.style.marginBottom = "2px";
         row.innerHTML = `<span>#${item.measure} : ${item.bpm} BPM</span>`;
         
+        const delBtn = document.createElement("button2"); // 簡易削除用
         const btn = document.createElement("button");
         btn.textContent = "×";
         btn.style.cssText = "background:#c0392b; color:#fff; border:none; padding:1px 5px; border-radius:3px; cursor:pointer; font-size:10px;";
         btn.onclick = () => {
             course.bpmChanges = course.bpmChanges.filter(i => i.measure !== item.measure);
             updateBpmChangeListUI();
-            buildTimingCache();
         };
         row.appendChild(btn);
         listDiv.appendChild(row);
@@ -700,71 +602,10 @@ function updateUIFromState() {
                     }
                 }
                 updateUIFromState();
-                buildTimingCache();
             });
             notesDiv.appendChild(cell);
         });
         row.appendChild(notesDiv);
-
-        const settingsDiv = document.createElement("div");
-        settingsDiv.style.cssText = "display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 11px; color: #aaa;";
-
-        const measureDiv = document.createElement("div");
-        measureDiv.style.cssText = "display: flex; align-items: center; gap: 3px;";
-        measureDiv.innerHTML = `<span>拍子:</span>`;
-        const measureInput = document.createElement("input");
-        measureInput.type = "text";
-        measureInput.value = course.measureChanges[mIndex] !== undefined ? course.measureChanges[mIndex] : "4/4";
-        measureInput.style.cssText = "width: 45px; padding: 3px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff; font-size: 11px; text-align: center;";
-        measureInput.addEventListener("change", (e) => {
-            const val = e.target.value.trim();
-            if (val && val !== "4/4") {
-                course.measureChanges[mIndex] = val;
-            } else {
-                delete course.measureChanges[mIndex];
-            }
-            const parts = val.split("/");
-            if (parts.length === 2) {
-                const num = parseFloat(parts[0]);
-                const den = parseFloat(parts[1]);
-                if (!isNaN(num) && !isNaN(den) && den > 0) {
-                    let targetLen = Math.round(state.subdivision * (num / (den / 4)));
-                    if (targetLen < 1) targetLen = state.subdivision;
-                    
-                    let oldArr = course.measures[mIndex];
-                    let newArr = Array(targetLen).fill(0);
-                    oldArr.forEach((n, idx) => {
-                        if (idx < targetLen) newArr[idx] = n;
-                    });
-                    course.measures[mIndex] = newArr;
-                    updateUIFromState();
-                    buildTimingCache();
-                }
-            }
-        });
-        measureDiv.appendChild(measureInput);
-        settingsDiv.appendChild(measureDiv);
-
-        const scrollDiv = document.createElement("div");
-        scrollDiv.style.cssText = "display: flex; align-items: center; gap: 3px;";
-        scrollDiv.innerHTML = `<span>SCROLL:</span>`;
-        const scrollInput = document.createElement("input");
-        scrollInput.type = "number";
-        scrollInput.step = "0.1";
-        scrollInput.value = course.scrollChanges[mIndex] !== undefined ? course.scrollChanges[mIndex] : 1.0;
-        scrollInput.style.cssText = "width: 45px; padding: 3px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff; font-size: 11px;";
-        scrollInput.addEventListener("change", (e) => {
-            const val = parseFloat(e.target.value);
-            if (!isNaN(val) && val !== 1.0) {
-                course.scrollChanges[mIndex] = val;
-            } else {
-                delete course.scrollChanges[mIndex];
-            }
-        });
-        scrollDiv.appendChild(scrollInput);
-        settingsDiv.appendChild(scrollDiv);
-
-        row.appendChild(settingsDiv);
 
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "measure-actions";
@@ -774,7 +615,6 @@ function updateUIFromState() {
         insertBtn.addEventListener("click", () => {
             measures.splice(mIndex + 1, 0, Array(state.subdivision).fill(0));
             updateUIFromState();
-            buildTimingCache();
         });
 
         const deleteBtn = document.createElement("button");
@@ -784,7 +624,6 @@ function updateUIFromState() {
             if (measures.length > 1) {
                 measures.splice(mIndex, 1);
                 updateUIFromState();
-                buildTimingCache();
             } else {
                 alert("最後の小節は削除できません。");
             }
@@ -836,7 +675,6 @@ function togglePlay() {
             state.audioSource.start(0, Math.max(0, state.playbackTime));
         }
         state.startTime = state.audioContext.currentTime - state.playbackTime;
-        if (!cachedTimingData) buildTimingCache();
         requestAnimationFrame(updatePlayback);
     }
 }
@@ -876,91 +714,121 @@ function updateLastPlayedNoteIndex() {
     playedBalloonPopKeys.clear();
 }
 
-// 【キャッシュ駆動型】毎フレームの重い再計算を一切排除した最速の再生ループ
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
     if (duration > 0) {
-        if (state.playbackTime >= duration) { resetPlay(); return; }
+        if (duration > 0 && state.playbackTime >= duration) { resetPlay(); return; }
         document.getElementById("seekBar").value = (state.playbackTime / duration) * 100;
         document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
 
-    if (!cachedTimingData) buildTimingCache();
-    const { measures, notes } = cachedTimingData;
-
+    const course = state.courses[state.currentCourse];
+    let currentBpm = state.bpm;
+    let noteGlobalIndex = 0;
+    
     let activeMIndex = -1;
     let activeNIndex = -1;
     let isCurrentlyInRenda = false;
+
+    let scanBpm = state.bpm;
+    let scanTime = -state.offset;
     let currentRendaStart = -1;
-    let foundBalloonThisField = null;
+    let foundBalloonThisFrame = null;
 
-    // 小節判定を高速キャッシュから特定
-    for (let i = 0; i < measures.length; i++) {
-        if (state.playbackTime >= measures[i].startTime && state.playbackTime < measures[i].endTime) {
-            activeMIndex = measures[i].mIndex;
-            break;
-        }
-    }
+    for (let m = 0; m < course.measures.length; m++) {
+        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
+        if (bChange) scanBpm = bChange.bpm;
+        const mTime = (60 / scanBpm) * 4;
+        const sub = course.measures[m].length;
+        const stepTime = mTime / sub;
 
-    // ノート判定を高速キャッシュから走査
-    for (let i = 0; i < notes.length; i++) {
-        const item = notes[i];
-        const noteTime = item.time;
-        const stepTime = item.stepTime;
-        const val = item.val;
+        for (let n = 0; n < sub; n++) {
+            const noteTime = scanTime + (n * stepTime);
+            const val = course.measures[m][n];
 
-        if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
-            activeNIndex = item.nIndex;
-            if (state.lastPlayedNoteIndex !== item.globalIndex) {
-                if (val >= 1 && val <= 4) {
-                    playSound(val.toString());
-                } else if (val === 7) {
-                    playSound("1");
+            if (val === 5 || val === 6) {
+                currentRendaStart = noteTime;
+            } else if (val === 8 && currentRendaStart !== -1) {
+                if (state.playbackTime >= currentRendaStart && state.playbackTime <= noteTime) {
+                    isCurrentlyInRenda = true;
                 }
-                state.lastPlayedNoteIndex = item.globalIndex;
-            }
-        }
+                currentRendaStart = -1;
+            } else if (val === 7) {
+                const countKey = `${m}-${n}`;
+                const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
+                
+                let balloonEndTime = noteTime + 1.0;
+                let foundEnd = false;
+                let sm = m, sn = n + 1;
+                let searchLimit = 0;
+                while (sm < course.measures.length && searchLimit < 100) {
+                    while (sn < course.measures[sm].length) {
+                        let nextVal = course.measures[sm][sn];
+                        if (nextVal === 8 || nextVal > 0) {
+                            let tempBpm = scanBpm;
+                            let tempTime = -state.offset;
+                            let targetTimeAcc = 0;
+                            for (let tm = 0; tm <= sm; tm++) {
+                                let tBChange = course.bpmChanges.find(i => i.measure === tm + 1);
+                                if (tBChange) tempBpm = tBChange.bpm;
+                                let tmTime = (60 / tempBpm) * 4;
+                                let tSub = course.measures[tm].length;
+                                let tStep = tmTime / tSub;
+                                for (let tn = 0; tn < tSub; tn++) {
+                                    if (tm === sm && tn === sn) {
+                                        targetTimeAcc = tempTime + (tn * tStep);
+                                        foundEnd = true;
+                                        break;
+                                    }
+                                }
+                                if (foundEnd) break;
+                                tempTime += tmTime;
+                            }
+                            if (foundEnd) {
+                                balloonEndTime = targetTimeAcc;
+                            }
+                            break;
+                        }
+                        sn++;
+                        searchLimit++;
+                    }
+                    if (foundEnd) break;
+                    sm++;
+                    sn = 0;
+                }
 
-        if (val === 5 || val === 6) {
-            currentRendaStart = noteTime;
-        } else if (val === 8 && currentRendaStart !== -1) {
-            if (state.playbackTime >= currentRendaStart && state.playbackTime <= noteTime) {
-                isCurrentlyInRenda = true;
-            }
-            currentRendaStart = -1;
-        } else if (val === 7) {
-            const countKey = `${item.mIndex}-${item.nIndex}`;
-            const course = state.courses[state.currentCourse];
-            const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-            let balloonDuration = 1.0;
-            let balloonStartActive = noteTime + 0.02;
+                let balloonDuration = Math.max(0.2, balloonEndTime - noteTime);
+                let balloonStartActive = noteTime + 0.02;
 
-            if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
-                isCurrentlyInRenda = true;
-                let interval = balloonDuration / Math.max(1, balloonCount);
-                foundBalloonThisField = {
-                    key: countKey,
-                    interval: interval,
-                    startTime: balloonStartActive,
-                    endTime: noteTime + balloonDuration
-                };
-            } else if (state.playbackTime > noteTime + balloonDuration) {
-                if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
-                    if (!playedBalloonPopKeys.has(countKey)) {
-                        playSound("balloon");
-                        playedBalloonPopKeys.add(countKey);
+                if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
+                    isCurrentlyInRenda = true;
+                    let interval = balloonDuration / Math.max(1, balloonCount);
+                    foundBalloonThisFrame = {
+                        key: countKey,
+                        interval: interval,
+                        startTime: balloonStartActive,
+                        endTime: noteTime + balloonDuration
+                    };
+                } else if (state.playbackTime > noteTime + balloonDuration) {
+                    if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
+                        if (!playedBalloonPopKeys.has(countKey)) {
+                            playSound("balloon");
+                            playedBalloonPopKeys.add(countKey);
+                        }
                     }
                 }
             }
+            noteGlobalIndex++;
         }
+        scanTime += mTime;
     }
 
-    if (foundBalloonThisField) {
-        if (!activeBalloonData || activeBalloonData.key !== foundBalloonThisField.key) {
-            activeBalloonData = foundBalloonThisField;
+    if (foundBalloonThisFrame) {
+        if (!activeBalloonData || activeBalloonData.key !== foundBalloonThisFrame.key) {
+            activeBalloonData = foundBalloonThisFrame;
             lastRendaSoundTime = activeBalloonData.startTime;
         }
 
@@ -975,34 +843,71 @@ function updatePlayback() {
         }
     }
 
-    if (isCurrentlyInRenda && !foundBalloonThisField) {
+    if (isCurrentlyInRenda && !foundBalloonThisFrame) {
         if (state.playbackTime - lastRendaSoundTime >= 0.11) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
         }
     }
 
-    // 小節変更時のみスクロールとクラスを更新
+    noteGlobalIndex = 0;
+    let accumulatedTime = -state.offset;
+    for (let m = 0; m < course.measures.length; m++) {
+        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
+        if (bChange) currentBpm = bChange.bpm;
+
+        const mTime = (60 / currentBpm) * 4;
+        const sub = course.measures[m].length;
+        const stepTime = mTime / sub;
+
+        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + mTime) {
+            activeMIndex = m;
+        }
+
+        for (let n = 0; n < sub; n++) {
+            const noteTime = accumulatedTime + (n * stepTime);
+            const val = course.measures[m][n];
+
+            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
+                activeNIndex = n;
+                if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
+                    if (val >= 1 && val <= 4) {
+                        playSound(val.toString());
+                    } else if (val === 7) {
+                        playSound("1");
+                    }
+                    state.lastPlayedNoteIndex = noteGlobalIndex;
+                }
+            }
+            noteGlobalIndex++;
+        }
+        accumulatedTime += mTime;
+    }
+
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
-        
-        if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
-        const targetRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
+        const targetMIndex = Math.max(0, activeMIndex - 1);
+        const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetMIndex}"]`);
         if (targetRow) {
-            targetRow.classList.add("playing");
-            lastHighlightedRow = targetRow;
             targetRow.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     }
 
-    // ノートのハイライト更新
-    const course = state.courses[state.currentCourse];
     const curRow = activeMIndex !== -1 ? document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`) : null;
     const curCell = (curRow && activeNIndex !== -1) ? curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`) : null;
 
+    if (lastHighlightedRow && lastHighlightedRow !== curRow) {
+        lastHighlightedRow.classList.remove("playing");
+    }
     if (lastHighlightedCell && lastHighlightedCell !== curCell) {
         lastHighlightedCell.classList.remove("playing-note");
     }
+
+    if (curRow) {
+        curRow.classList.add("playing");
+        lastHighlightedRow = curRow;
+    }
+
     if (curCell && activeMIndex !== -1 && course.measures[activeMIndex][activeNIndex] !== 0) {
         curCell.classList.add("playing-note");
         lastHighlightedCell = curCell;
@@ -1042,14 +947,6 @@ function generateTJA() {
         course.measures.forEach((meas, idx) => {
             const b = course.bpmChanges.find(i => i.measure === idx + 1);
             if (b) tja += `#BPMCHANGE ${b.bpm}\n`;
-            
-            if (course.measureChanges[idx] !== undefined) {
-                tja += `#MEASURE ${course.measureChanges[idx]}\n`;
-            }
-
-            if (course.scrollChanges[idx] !== undefined) {
-                tja += `#SCROLL ${course.scrollChanges[idx]}\n`;
-            }
             
             let lineStr = "";
             for (let i = 0; i < meas.length; i++) {
