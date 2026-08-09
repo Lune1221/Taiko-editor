@@ -5,8 +5,9 @@ const state = {
     title: "sample",
     measureType: "4/4",
     subdivision: 16,
-    measuresCount: 4,
-    measures: Array(4).fill(0).map(() => Array(16).fill(0)),
+    measuresCount: 8,
+    measures: Array(8).fill(0).map(() => Array(16).fill(0)),
+    bpmChanges: [], // 例: [{ measure: 3, bpm: 150 }]
     selectedTool: "1",
     audioFile: null,
     audioFileName: "未選択",
@@ -19,7 +20,6 @@ const state = {
     lastCellIndex: -1
 };
 
-// サウンドエフェクト用バッファ
 let soundBuffers = {
     don: null,
     ka: null
@@ -33,18 +33,24 @@ const metaMeasure = document.getElementById("metaMeasure");
 const subdivisionSelect = document.getElementById("subdivisionSelect");
 const measuresContainer = document.getElementById("measuresContainer");
 const audioFileInput = document.getElementById("audioFile");
+const importZipInput = document.getElementById("importZip");
 const audioFileNameSpan = document.getElementById("audioFileName");
 const playBtn = document.getElementById("playBtn");
 const stopBtn = document.getElementById("stopBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const currentTimeDisplay = document.getElementById("currentTimeDisplay");
 
-// 初期化
+const bpmChangeMeasureInput = document.getElementById("bpmChangeMeasure");
+const bpmChangeValueInput = document.getElementById("bpmChangeValue");
+const addBpmChangeBtn = document.getElementById("addBpmChangeBtn");
+const bpmChangeList = document.getElementById("bpmChangeList");
+
 window.addEventListener("DOMContentLoaded", () => {
     initAudioContext();
     loadSoundEffects();
     setupEventListeners();
     renderEditor();
+    renderBpmChanges();
 });
 
 function initAudioContext() {
@@ -52,16 +58,15 @@ function initAudioContext() {
     state.audioContext = new AudioContext();
 }
 
-// 効果音の読み込み
 async function loadSoundEffects() {
     try {
         const donRes = await fetch("assets/audio/Neiro1_Don.ogg");
-        if (!donRes.ok) throw new Error("Don.oggが見つかりません");
+        if (!donRes.ok) throw new Error();
         const donArrayBuffer = await donRes.arrayBuffer();
         soundBuffers.don = await state.audioContext.decodeAudioData(donArrayBuffer);
 
         const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
-        if (!kaRes.ok) throw new Error("Ka.oggが見つかりません");
+        if (!kaRes.ok) throw new Error();
         const kaArrayBuffer = await kaRes.arrayBuffer();
         soundBuffers.ka = await state.audioContext.decodeAudioData(kaArrayBuffer);
     } catch (e) {
@@ -69,24 +74,19 @@ async function loadSoundEffects() {
     }
 }
 
-// 効果音の再生
 function playSound(type) {
     if (!state.audioContext) return;
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
-    
     if (!buffer) {
         playFallbackSound(type);
         return;
     }
-
     try {
         const source = state.audioContext.createBufferSource();
         source.buffer = buffer;
         source.connect(state.audioContext.destination);
         source.start(0);
-    } catch(e) {
-        console.error("効果音再生エラー:", e);
-    }
+    } catch(e) {}
 }
 
 function playFallbackSound(type) {
@@ -109,11 +109,9 @@ function setupEventListeners() {
     metaBpm.addEventListener("change", (e) => {
         state.bpm = parseFloat(e.target.value) || 120;
     });
-    
     metaOffset.addEventListener("input", (e) => {
         state.offset = parseFloat(e.target.value) || 0;
     });
-    
     metaMeasure.addEventListener("change", (e) => {
         state.measureType = e.target.value;
     });
@@ -130,6 +128,22 @@ function setupEventListeners() {
         renderEditor();
     });
 
+    addBpmChangeBtn.addEventListener("click", () => {
+        const m = parseInt(bpmChangeMeasureInput.value);
+        const b = parseFloat(bpmChangeValueInput.value);
+        if (isNaN(m) || isNaN(b) || m < 1 || b <= 0) return;
+
+        // すでに同じ小節に設定があれば上書き、なければ追加
+        const existing = state.bpmChanges.find(item => item.measure === m);
+        if (existing) {
+            existing.bpm = b;
+        } else {
+            state.bpmChanges.push({ measure: m, bpm: b });
+            state.bpmChanges.sort((a, b) => a.measure - b.measure);
+        }
+        renderBpmChanges();
+    });
+
     document.querySelectorAll(".tool-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             document.querySelectorAll(".tool-btn").forEach(b => b.classList.remove("active"));
@@ -141,29 +155,162 @@ function setupEventListeners() {
     audioFileInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         if (!file.type.startsWith("audio/")) {
-            alert("エラー: 音声ファイルを選択してください（mp3, ogg, wavなど）");
+            alert("エラー: 音声ファイルを選択してください");
             audioFileInput.value = "";
             return;
         }
+        await loadAudioFile(file);
+    });
 
-        state.audioFile = file;
-        state.audioFileName = file.name;
-        audioFileNameSpan.textContent = file.name;
+    // ZIPインポート機能
+    importZipInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
         try {
-            const arrayBuffer = await file.arrayBuffer();
-            state.audioBuffer = await state.audioContext.decodeAudioData(arrayBuffer);
+            const zip = new JSZip();
+            const zipContent = await zip.loadAsync(file);
+            
+            let tjaText = "";
+            let audioFileObj = null;
+            let audioFileNameStr = "";
+
+            for (let filename of Object.keys(zipContent.files)) {
+                const zipEntry = zipContent.files[filename];
+                if (filename.endsWith(".tja")) {
+                    tjaText = await zipEntry.async("text");
+                } else if (filename.match(/\.(ogg|mp3|wav)$/i)) {
+                    const blob = await zipEntry.async("blob");
+                    audioFileObj = new File([blob], filename, { type: blob.type });
+                    audioFileNameStr = filename;
+                }
+            }
+
+            if (!tjaText) {
+                alert("エラー: ZIP内にTJAファイルが見つかりませんでした。");
+                return;
+            }
+
+            parseTJA(tjaText);
+
+            if (audioFileObj) {
+                await loadAudioFile(audioFileObj);
+            }
+
+            metaTitle.value = state.title;
+            metaBpm.value = state.bpm;
+            metaOffset.value = state.offset;
+            renderEditor();
+            renderBpmChanges();
+            alert("ZIPファイルのインポートに成功しました！");
+
         } catch (err) {
-            alert("エラー: 音楽ファイルの読み込みに失敗しました。");
+            alert("エラー: ZIPファイルの解析に失敗しました。");
             console.error(err);
         }
+        importZipInput.value = "";
     });
 
     playBtn.addEventListener("click", togglePlay);
     stopBtn.addEventListener("click", resetPlay);
     downloadBtn.addEventListener("click", downloadZip);
+}
+
+async function loadAudioFile(file) {
+    state.audioFile = file;
+    state.audioFileName = file.name;
+    audioFileNameSpan.textContent = file.name;
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        state.audioBuffer = await state.audioContext.decodeAudioData(arrayBuffer);
+    } catch (err) {
+        alert("エラー: 音楽ファイルのデコードに失敗しました。");
+    }
+}
+
+// TJAファイルの簡易パーサー
+function parseTJA(text) {
+    const lines = text.split(/\r?\n/);
+    let title = "sample";
+    let bpm = 120;
+    let offset = 0;
+    let measures = [];
+    let currentMeasureNotes = [];
+    let bpmChanges = [];
+    let inCourse = false;
+
+    for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith("TITLE:")) title = line.substring(6).trim();
+        if (line.startsWith("BPM:")) bpm = parseFloat(line.substring(4)) || 120;
+        if (line.startsWith("OFFSET:")) offset = parseFloat(line.substring(7)) || 0;
+        if (line.startsWith("#START")) {
+            inCourse = true;
+            continue;
+        }
+        if (line.startsWith("#END")) {
+            inCourse = false;
+            break;
+        }
+
+        if (inCourse) {
+            // BPM変更タグの検出 (#BPMCHANGE:xxx)
+            if (line.toUpperCase().startsWith("#BPMCHANGE:")) {
+                const newBpm = parseFloat(line.substring(11));
+                if (!isNaN(newBpm)) {
+                    bpmChanges.push({ measure: measures.length + 1, bpm: newBpm });
+                }
+                continue;
+            }
+
+            // 小節終わりのカンマ
+            if (line.endsWith(",")) {
+                line = line.slice(0, -1);
+            }
+
+            if (line.length > 0) {
+                // 文字列をノート配列に分解
+                let notes = [];
+                for (let i = 0; i < line.length; i++) {
+                    let char = line[i];
+                    if (["0","1","2","3","4"].includes(char)) {
+                        notes.push(parseInt(char));
+                    }
+                }
+                if (notes.length > 0) {
+                    measures.push(notes);
+                }
+            }
+        }
+    }
+
+    if (measures.length > 0) {
+        state.measures = measures;
+        state.subdivision = measures[0].length;
+        subdivisionSelect.value = state.subdivision.toString();
+    }
+    state.title = title;
+    state.bpm = bpm;
+    state.offset = offset;
+    state.bpmChanges = bpmChanges;
+}
+
+function renderBpmChanges() {
+    bpmChangeList.innerHTML = "";
+    state.bpmChanges.forEach((item, index) => {
+        const div = document.createElement("div");
+        div.className = "bpm-item";
+        div.innerHTML = `<span>#${item.measure}小節〜: BPM ${item.bpm}</span>`;
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "×";
+        delBtn.addEventListener("click", () => {
+            state.bpmChanges.splice(index, 1);
+            renderBpmChanges();
+        });
+        div.appendChild(delBtn);
+        bpmChangeList.appendChild(div);
+    });
 }
 
 function renderEditor() {
@@ -241,8 +388,6 @@ function startPlay() {
         state.audioSource = state.audioContext.createBufferSource();
         state.audioSource.buffer = state.audioBuffer;
         state.audioSource.connect(state.audioContext.destination);
-        
-        // 音楽は常に曲の最初（0秒）から再生をスタートさせる
         state.audioSource.start(0, Math.max(0, state.playbackTime));
     }
 
@@ -271,7 +416,7 @@ function resetPlay() {
     currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
 }
 
-// 音楽の再生時間から「OFFSET分のウェイト」を引いた時間を譜面進行の基準にする
+// 複数BPM変化を考慮した時間計算
 function updatePlayback() {
     if (!state.isPlaying) return;
     
@@ -283,35 +428,52 @@ function updatePlayback() {
         return;
     }
     
-    // 【OFFSETの反映】
-    // 曲が始まってから state.offset 秒（例: 0.77秒）経過するまでは譜面を待たせる（chartTimeをマイナスにする）
-    // 例: offsetが -0.77 の場合、 playbackTime が 0.77 のときに chartTime が 0（1小節目の頭）になる
     const chartTime = state.playbackTime + state.offset;
 
     if (chartTime >= 0) {
-        const secondsPerBeat = 60 / state.bpm;
-        const secondsPerMeasure = secondsPerBeat * 4; // 4/4拍子ベース
-        const secondsPerCell = secondsPerMeasure / state.subdivision;
+        // 現在のchartTimeがどの小節・どのセルに該当するかをBPM変化を考慮して計算
+        let currentBpm = state.bpm;
+        let accumulatedTime = 0;
+        let targetMeasure = 0;
+        let targetCell = 0;
+        let found = false;
 
-        if (secondsPerCell > 0) {
-            const totalCells = Math.floor(chartTime / secondsPerCell);
-            const mIndex = Math.floor(totalCells / state.subdivision);
-            const nIndex = totalCells % state.subdivision;
+        // 各小節の長さを計算しながら現在位置を特定
+        for (let m = 0; m < state.measures.length; m++) {
+            // この小節の途中でBPMが切り替わるかチェック
+            const change = state.bpmChanges.find(item => item.measure === m + 1);
+            if (change) {
+                currentBpm = change.bpm;
+            }
 
-            if (state.lastCellIndex !== totalCells && mIndex < state.measures.length) {
-                if (nIndex >= 0 && nIndex < state.measures[mIndex].length) {
-                    const note = state.measures[mIndex][nIndex];
-                    if (note > 0) {
-                        playSound(note.toString());
-                    }
+            const measureSec = (60 / currentBpm) * 4; // 4/4拍子ベース
+            const cellSec = measureSec / state.measures[m].length;
+
+            for (let c = 0; c < state.measures[m].length; c++) {
+                if (accumulatedTime <= chartTime && chartTime < accumulatedTime + cellSec) {
+                    targetMeasure = m;
+                    targetCell = c;
+                    found = true;
+                    break;
                 }
-                state.lastCellIndex = totalCells;
+                accumulatedTime += cellSec;
+            }
+            if (found) break;
+        }
+
+        if (found) {
+            const totalCellsIndex = targetMeasure * 1000 + targetCell; // 識別用インデックス
+            if (state.lastCellIndex !== totalCellsIndex) {
+                const note = state.measures[targetMeasure][targetCell];
+                if (note > 0) {
+                    playSound(note.toString());
+                }
+                state.lastCellIndex = totalCellsIndex;
             }
         }
     }
 
     currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
-
     requestAnimationFrame(updatePlayback);
 }
 
@@ -325,7 +487,12 @@ function generateTJA() {
     tja += `BALLOON:\n`;
     tja += `#START\n`;
 
-    state.measures.forEach((measure) => {
+    state.measures.forEach((measure, mIndex) => {
+        // 途中でBPM変更があれば書き出す
+        const change = state.bpmChanges.find(item => item.measure === mIndex + 1);
+        if (change) {
+            tja += `#BPMCHANGE:${change.bpm}\n`;
+        }
         let line = measure.join("");
         tja += line + ",\n";
     });
