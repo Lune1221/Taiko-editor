@@ -6,6 +6,26 @@
     <title>Taiko Chart Editor</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        /* 再生中の小節を光らせるスタイル */
+        .measure-row.playing {
+            background-color: rgba(255, 235, 59, 0.2);
+            box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
+            border-left: 4px solid #ffeb3b;
+            transition: background-color 0.1s ease;
+        }
+        /* シークバーのスタイル */
+        .seek-bar-container {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .seek-bar {
+            flex: 1;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <header>
@@ -92,6 +112,9 @@
                     <button id="playBtn" class="btn success" style="flex: 1;">再生 / 停止</button>
                     <button id="stopBtn" class="btn danger">最初から</button>
                 </div>
+                <div class="seek-bar-container">
+                    <input type="range" id="seekBar" class="seek-bar" value="0" min="0" max="100" step="0.01">
+                </div>
             </div>
         </aside>
 
@@ -157,7 +180,7 @@ const state = {
     audioContext: null,
     audioSource: null,
     playbackTime: 0,
-    lastPlayedNoteIndex: -1 // 再生中に効果音を鳴らした最後のノート位置を追跡
+    lastPlayedNoteIndex: -1
 };
 
 let soundBuffers = { don: null, ka: null };
@@ -176,6 +199,7 @@ const playBtn = document.getElementById("playBtn");
 const stopBtn = document.getElementById("stopBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const currentTimeDisplay = document.getElementById("currentTimeDisplay");
+const seekBar = document.getElementById("seekBar");
 
 const bpmChangeMeasureInput = document.getElementById("bpmChangeMeasure");
 const bpmChangeValueInput = document.getElementById("bpmChangeValue");
@@ -337,6 +361,31 @@ function setupEventListeners() {
     playBtn.addEventListener("click", togglePlay);
     stopBtn.addEventListener("click", resetPlay);
     downloadBtn.addEventListener("click", downloadZip);
+
+    // シークバー操作時の処理
+    seekBar.addEventListener("input", (e) => {
+        if (!state.audioBuffer) return;
+        const duration = state.audioBuffer.duration;
+        state.playbackTime = (parseFloat(e.target.value) / 100) * duration;
+        
+        if (state.isPlaying) {
+            // 再生中の場合は一度止めて新しい位置から再開
+            if (state.audioSource) {
+                try { state.audioSource.stop(); } catch(e) {}
+            }
+            state.audioSource = state.audioContext.createBufferSource();
+            state.audioSource.buffer = state.audioBuffer;
+            state.audioSource.connect(state.audioContext.destination);
+            state.audioSource.start(0, state.playbackTime);
+            state.startTime = state.audioContext.currentTime - state.playbackTime;
+        }
+
+        // シークした位置に合わせて直前に再生されたノートのインデックスを再計算
+        updateLastPlayedNoteIndex();
+        
+        // 画面の表示を更新
+        currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
+    });
 }
 
 async function loadAudioFile(file) {
@@ -345,6 +394,8 @@ async function loadAudioFile(file) {
     audioFileNameSpan.textContent = file.name;
     try {
         state.audioBuffer = await state.audioContext.decodeAudioData(await file.arrayBuffer());
+        seekBar.max = "100";
+        seekBar.value = "0";
     } catch (err) {
         alert("エラー: 音楽ファイルのデコードに失敗しました。");
     }
@@ -533,6 +584,7 @@ function renderEditor() {
     measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
         row.className = "measure-row";
+        row.dataset.measureIndex = mIndex; // 小節ハイライト用にインデックスを付与
 
         const num = document.createElement("div");
         num.className = "measure-number";
@@ -616,14 +668,50 @@ function pausePlay() {
         state.playbackTime = state.audioContext.currentTime - state.startTime;
         if (state.playbackTime < 0) state.playbackTime = 0;
     }
+    clearMeasureHighlight();
 }
 
 function resetPlay() {
     pausePlay();
     state.playbackTime = 0;
     state.lastPlayedNoteIndex = -1;
+    seekBar.value = "0";
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
     currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
+    clearMeasureHighlight();
+}
+
+function clearMeasureHighlight() {
+    document.querySelectorAll(".measure-row").forEach(r => r.classList.remove("playing"));
+}
+
+function updateLastPlayedNoteIndex() {
+    // シークした際、現在の再生時間より前にあるノートを「再生済み」扱いにする計算
+    const courseData = state.courses[state.currentCourse];
+    const measures = courseData.measures;
+    let currentBpm = state.bpm;
+    let accumulatedTime = -state.offset;
+    let noteGlobalIndex = 0;
+    let lastFound = -1;
+
+    for (let m = 0; m < measures.length; m++) {
+        const bpmChange = courseData.bpmChanges.find(item => item.measure === m + 1);
+        if (bpmChange) currentBpm = bpmChange.bpm;
+
+        const measureTime = (60 / currentBpm) * 4;
+        const subdivision = measures[m].length;
+        const stepTime = measureTime / subdivision;
+
+        for (let n = 0; n < subdivision; n++) {
+            const noteTime = accumulatedTime + (n * stepTime);
+            if (state.playbackTime >= noteTime) {
+                lastFound = noteGlobalIndex;
+            }
+            noteGlobalIndex++;
+        }
+        accumulatedTime += measureTime;
+    }
+    state.lastPlayedNoteIndex = lastFound;
 }
 
 function updatePlayback() {
@@ -635,32 +723,39 @@ function updatePlayback() {
         resetPlay();
         return;
     }
+
+    // シークバーの位置を更新（ドラッグ中じゃなければ）
+    if (duration > 0) {
+        seekBar.value = (state.playbackTime / duration) * 100;
+    }
+
     currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
 
-    // --- 再生位置に合わせてノーツの効果音を自動再生する処理 ---
+    // --- 再生位置に合わせてノーツの効果音自動再生 ＆ 小節のハイライト処理 ---
     const courseData = state.courses[state.currentCourse];
     const measures = courseData.measures;
     let currentBpm = state.bpm;
     
-    // 全体の経過時間から、現在の小節・音符位置を逆算して判定
     let accumulatedTime = -state.offset;
     let noteGlobalIndex = 0;
-    let played = false;
+    let activeMeasureIndex = -1;
 
     for (let m = 0; m < measures.length; m++) {
-        // BPM変化の適用
         const bpmChange = courseData.bpmChanges.find(item => item.measure === m + 1);
         if (bpmChange) currentBpm = bpmChange.bpm;
 
-        // 1小節にかかる時間（4/4拍子基準：60 / BPM * 4秒）
         const measureTime = (60 / currentBpm) * 4;
         const subdivision = measures[m].length;
         const stepTime = measureTime / subdivision;
 
+        // 現在の時間がこの小節の範囲内かチェック
+        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + measureTime) {
+            activeMeasureIndex = m;
+        }
+
         for (let n = 0; n < subdivision; n++) {
             const noteTime = accumulatedTime + (n * stepTime);
             
-            // 現在の再生時間がノートのタイミングを過ぎていて、かつまだ鳴らしていない場合
             if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
                     const noteVal = measures[m][n];
@@ -669,12 +764,21 @@ function updatePlayback() {
                     }
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
-                played = true;
             }
             noteGlobalIndex++;
         }
         accumulatedTime += measureTime;
     }
+
+    // 小節のハイライト表示を更新
+    const measureRows = document.querySelectorAll(".measure-row");
+    measureRows.forEach((row, idx) => {
+        if (idx === activeMeasureIndex) {
+            row.classList.add("playing");
+        } else {
+            row.classList.remove("playing");
+        }
+    });
 
     requestAnimationFrame(updatePlayback);
 }
