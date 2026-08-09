@@ -502,6 +502,12 @@ function updateUIFromState() {
                 }
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
+                // もしこの小節内に 8 が含まれておらず、かつこのセルの直後に 8 が無い状態で小節が終わる場合の対策
+            }
+
+            // 万が一、小節の途中で 8 が来ていたら確実にフラグを折る
+            if (note === 8) {
+                isInsideRenda = false;
             }
 
             updateCellContent(cell, note);
@@ -518,6 +524,9 @@ function updateUIFromState() {
             });
             notesDiv.appendChild(cell);
         });
+        
+        // 小節の終わりで、もし 8 が無いまま小節をまたぐ場合は次の小節へ引き継ぐが、
+        // もしこの小節のどこかに 8 があれば、小節の終わりには必ずフラグがオフになるようにする
         row.appendChild(notesDiv);
         container.appendChild(row);
     });
@@ -609,7 +618,6 @@ function updatePlayback() {
     let activeNIndex = -1;
     let isCurrentlyInRenda = false;
 
-    // 全体のノーツを走査して、現在の再生時間がどの連打区間内にあるかを正確に判定する
     let globalInsideRenda = false;
 
     for (let m = 0; m < course.measures.length; m++) {
@@ -628,12 +636,10 @@ function updatePlayback() {
             const noteTime = accumulatedTime + (n * stepTime);
             const val = course.measures[m][n];
 
-            // 連打・風船の開始 (5, 6, 7) でフラグON
             if (val === 5 || val === 6 || val === 7) {
                 globalInsideRenda = true;
             }
 
-            // 現在の再生時間がこのノーツのタイミングにいる場合
             if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
                 activeNIndex = n;
                 if (globalInsideRenda) {
@@ -647,9 +653,12 @@ function updatePlayback() {
                 }
             }
 
-            // 終点 (8) に到達したらフラグOFF（このノーツの判定が終わった後、または終点自体でオフ）
             if (val === 8) {
                 globalInsideRenda = false;
+                // もし再生時間がちょうどこの終点 8 の位置にいる、または過ぎた瞬間であれば連打を即座に切る
+                if (state.playbackTime >= noteTime) {
+                    isCurrentlyInRenda = false;
+                }
             }
 
             noteGlobalIndex++;
@@ -657,14 +666,12 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
-    // 連打区間にいる間だけ、0.1秒（秒間10回）ごとにドン音を鳴らす
-    if (isCurrentlyInRenda) {
+    if (isCurrentlyInRenda && globalInsideRenda) {
         if (state.playbackTime - lastRendaSoundTime >= 0.1) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
         }
     } else {
-        // 連打区間を抜けたらタイマーをリセットし、次の連打ですぐ鳴るようにする
         lastRendaSoundTime = 0;
     }
 
