@@ -211,6 +211,12 @@ async function loadSoundEffects() {
 
 function playSound(type) {
     if (!state.audioContext) return;
+    
+    // ブラウザの自動再生ポリシー対策：停止中なら再開させる
+    if (state.audioContext.state === "suspended") {
+        state.audioContext.resume();
+    }
+
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
     if (!buffer) return;
     try {
