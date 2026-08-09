@@ -143,6 +143,8 @@ main {
 .tool-btn img {
     width: 20px;
     height: 20px;
+    object-fit: contain;
+    pointer-events: none;
 }
 
 .tool-btn.active {
@@ -220,6 +222,7 @@ main {
     border-radius: 8px;
     align-items: center;
     border: 1px solid #2a2a35;
+    gap: 10px;
 }
 
 .measure-row.playing {
@@ -252,6 +255,30 @@ main {
     border-radius: 3px;
 }
 
+.measure-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.measure-actions button {
+    padding: 4px 8px;
+    font-size: 11px;
+    background: #3e3e50;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.measure-actions button:hover {
+    background: #55556a;
+}
+
+.measure-actions button.danger:hover {
+    background: #c0392b;
+}
+
 .note-cell {
     width: 32px;
     height: 32px;
@@ -263,14 +290,13 @@ main {
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.1s ease;
     box-sizing: border-box;
     background-repeat: no-repeat;
     position: relative;
     overflow: hidden;
 }
 
-/* --- 連打ノーツ（1枚のRenda.pngから切り分け） --- */
+/* --- 連打・風船ノーツの背景切り出し --- */
 .note-cell.renda-start {
     background-image: url('../assets/img/Renda.png');
     background-position: left center;
@@ -294,21 +320,46 @@ main {
     border-left: none;
 }
 
-/* 通常ノーツ */
+.note-cell.balloon-left {
+    background-image: url('../assets/img/Balloon.png');
+    background-position: left center;
+    background-size: 200% 100%;
+    border-radius: 4px 0 0 4px;
+    border-right: none;
+}
+.note-cell.balloon-right {
+    background-image: url('../assets/img/Balloon.png');
+    background-position: right center;
+    background-size: 200% 100%;
+    border-radius: 0 4px 4px 0;
+    border-left: none;
+}
+
+.note-cell.balloon-endpoint-overlay::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 50%;
+    width: 4px;
+    background-color: #ff5722;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(255, 87, 34, 0.8);
+}
+
 .note-cell img {
     width: 24px;
     height: 24px;
     pointer-events: none;
-    transition: transform 0.05s ease;
 }
 
-/* 大音符（ドン_2 / カ_2）は大きく表示 */
 .note-cell img.big-note {
     width: 32px;
     height: 32px;
 }
 
-/* 再生中のセル強調（ノーツ画像なし/空白セルでも光る） */
 .note-cell.playing-note {
     background-color: #4a4a60 !important;
     border-color: #ffff80 !important;
@@ -318,6 +369,18 @@ main {
 .note-cell.playing-note img {
     filter: brightness(1.5) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
     transform: scale(1.15);
+}
+
+.balloon-count-badge {
+    position: absolute;
+    bottom: -2px;
+    right: 2px;
+    font-size: 10px;
+    color: #fff;
+    background: rgba(0,0,0,0.7);
+    padding: 0 3px;
+    border-radius: 3px;
+    pointer-events: none;
 }
 
 .seek-bar-container {
@@ -331,172 +394,3 @@ main {
     flex: 1;
     cursor: pointer;
 }
-
-        .editor-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            background: #2a2a35;
-            border-bottom: 1px solid #3e3e50;
-        }
-        .header-controls-right {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .measure-row {
-            display: flex;
-            margin-bottom: 10px;
-            background: #1e1e28;
-            padding: 10px;
-            border-radius: 8px;
-            align-items: center;
-            contain: content;
-            gap: 10px;
-        }
-        .measure-row.playing {
-            background-color: rgba(255, 235, 59, 0.15);
-            box-shadow: inset 4px 0 0 #ffeb3b;
-        }
-        .measure-number {
-            width: 50px;
-            font-weight: bold;
-            color: #888;
-            flex-shrink: 0;
-        }
-        .measure-notes {
-            display: flex;
-            gap: 0;
-            overflow-x: auto;
-            padding-bottom: 8px;
-            flex-wrap: nowrap;
-            flex: 1;
-            will-change: scroll-position;
-        }
-        .measure-notes::-webkit-scrollbar {
-            height: 6px;
-        }
-        .measure-notes::-webkit-scrollbar-thumb {
-            background: #555;
-            border-radius: 3px;
-        }
-        .measure-actions {
-            display: flex;
-            gap: 5px;
-            flex-shrink: 0;
-        }
-        .measure-actions button {
-            padding: 4px 8px;
-            font-size: 11px;
-            background: #3e3e50;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .measure-actions button:hover {
-            background: #55556a;
-        }
-        .measure-actions button.danger:hover {
-            background: #c0392b;
-        }
-        .note-cell {
-            width: 32px;
-            height: 32px;
-            background-color: #2a2a35;
-            border: 1px solid #3e3e50;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            flex-shrink: 0;
-            box-sizing: border-box;
-            background-repeat: no-repeat;
-            transform: translateZ(0);
-            position: relative;
-        }
-        
-        .note-cell.renda-start {
-            background-image: url('assets/img/Renda.png');
-            background-position: left center;
-            background-size: auto 100%;
-            border-radius: 4px 0 0 4px;
-            border-right: none;
-        }
-        .note-cell.renda-body {
-            background-image: url('assets/img/Renda.png');
-            background-position: center center;
-            background-size: auto 100%;
-            border-radius: 0;
-            border-left: none;
-            border-right: none;
-        }
-        .note-cell.renda-end {
-            background-image: url('assets/img/Renda.png');
-            background-position: right center;
-            background-size: auto 100%;
-            border-radius: 0 4px 4px 0;
-            border-left: none;
-        }
-
-        .note-cell.balloon-left {
-            background-image: url('assets/img/Balloon.png');
-            background-position: left center;
-            background-size: 200% 100%;
-            border-radius: 4px 0 0 4px;
-            border-right: none;
-        }
-        .note-cell.balloon-right {
-            background-image: url('assets/img/Balloon.png');
-            background-position: right center;
-            background-size: 200% 100%;
-            border-radius: 0 4px 4px 0;
-            border-left: none;
-        }
-
-        .note-cell.balloon-endpoint-overlay::after {
-            content: "";
-            position: absolute;
-            top: 4px;
-            bottom: 4px;
-            left: 50%;
-            width: 4px;
-            background-color: #ff5722;
-            transform: translateX(-50%);
-            border-radius: 2px;
-            pointer-events: none;
-            box-shadow: 0 0 4px rgba(255, 87, 34, 0.8);
-        }
-
-        .note-cell img {
-            width: 28px;
-            height: 28px;
-            pointer-events: none;
-        }
-        .note-cell.playing-note img {
-            filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
-            transform: scale(1.15) translateZ(0);
-        }
-        .balloon-count-badge {
-            position: absolute;
-            bottom: -2px;
-            right: 2px;
-            font-size: 10px;
-            color: #fff;
-            background: rgba(0,0,0,0.7);
-            padding: 0 3px;
-            border-radius: 3px;
-            pointer-events: none;
-        }
-        .seek-bar-container {
-            margin-top: 8px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .seek-bar {
-            flex: 1;
-            cursor: pointer;
-        }
