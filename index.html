@@ -568,8 +568,47 @@ function updateUIFromState() {
     const course = state.courses[state.currentCourse];
     const measures = course.measures;
 
-    let isInsideRenda = false;
-    let isInsideBalloon = false;
+    // 全小節を事前にスキャンして、すべての「5/6/7（開始）」から「8（終了）」までのペアを正確に紐付ける
+    let noteStates = []; // 各ノートが何に属するかを保持 [mIndex, nIndex] -> type ('renda' or 'balloon')
+    
+    // まずすべてのノートの平坦なリストを作る
+    let flatNotes = [];
+    measures.forEach((measure, mIndex) => {
+        measure.forEach((note, nIndex) => {
+            flatNotes.push({ mIndex, nIndex, note });
+        });
+    });
+
+    let activeStartType = null; // 'renda' or 'balloon'
+    let currentPairStartIndex = -1;
+    let pendingStarts = [];
+
+    flatNotes.forEach((item, idx) => {
+        if (item.note === 5 || item.note === 6) {
+            pendingStarts.push({ type: 'renda', flatIdx: idx });
+        } else if (item.note === 7) {
+            pendingStarts.push({ type: 'balloon', flatIdx: idx });
+        } else if (item.note === 8) {
+            if (pendingStarts.length > 0) {
+                let start = pendingStarts.shift(); // 一番近い未処理の開始とペアにする
+                flatNotes[start.flatIdx].status = `${start.type}-start`;
+                flatNotes[idx].status = `${start.type}-end`;
+                for (let i = start.flatIdx + 1; i < idx; i++) {
+                    if (!flatNotes[i].status) {
+                        flatNotes[i].status = `${start.type}-body`;
+                    }
+                }
+            }
+        }
+    });
+
+    // マップに変換しやすいように整理
+    let noteStatusMap = {};
+    flatNotes.forEach(item => {
+        if (item.status) {
+            noteStatusMap[`${item.mIndex}-${item.nIndex}`] = item.status;
+        }
+    });
 
     measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
@@ -595,11 +634,16 @@ function updateUIFromState() {
             cell.className = "note-cell";
             cell.dataset.noteIndex = nIndex;
             
-            if (note === 5 || note === 6) {
-                isInsideRenda = true;
+            const statusKey = `${mIndex}-${nIndex}`;
+            const status = noteStatusMap[statusKey];
+
+            if (status === 'renda-start') {
                 cell.classList.add("renda-start");
-            } else if (note === 7) {
-                isInsideBalloon = true;
+            } else if (status === 'renda-body') {
+                cell.classList.add("renda-body");
+            } else if (status === 'renda-end') {
+                cell.classList.add("renda-end");
+            } else if (status === 'balloon-start') {
                 cell.classList.add("balloon-start");
                 const countKey = `${mIndex}-${nIndex}`;
                 if (course.balloonCounts[countKey] === undefined) {
@@ -609,19 +653,22 @@ function updateUIFromState() {
                 badge.className = "balloon-count-badge";
                 badge.textContent = course.balloonCounts[countKey];
                 cell.appendChild(badge);
-            } else if (note === 8) {
-                // 連打中なら連打の終点、風船中なら風船の終点として正確に分岐
-                if (isInsideBalloon) {
-                    cell.classList.add("balloon-end");
-                    isInsideBalloon = false;
-                } else if (isInsideRenda) {
-                    cell.classList.add("renda-end");
-                    isInsideRenda = false;
-                }
-            } else if (isInsideRenda) {
-                cell.classList.add("renda-body");
-            } else if (isInsideBalloon) {
+            } else if (status === 'balloon-body') {
                 cell.classList.add("balloon-body");
+            } else if (status === 'balloon-end') {
+                cell.classList.add("balloon-end");
+            } else {
+                // 万が一孤立している場合のフォールバック
+                if (note === 5 || note === 6) cell.classList.add("renda-start");
+                if (note === 7) {
+                    cell.classList.add("balloon-start");
+                    const countKey = `${mIndex}-${nIndex}`;
+                    if (course.balloonCounts[countKey] === undefined) course.balloonCounts[countKey] = 5;
+                    const badge = document.createElement("span");
+                    badge.className = "balloon-count-badge";
+                    badge.textContent = course.balloonCounts[countKey];
+                    cell.appendChild(badge);
+                }
             }
 
             updateCellContent(cell, note);
