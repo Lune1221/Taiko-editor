@@ -12,8 +12,8 @@
         <h1>Taiko Chart Editor</h1>
         <div class="header-actions">
             <div class="file-input-group">
+                <input type="file" id="audioFile" accept="audio/*">
                 <label for="audioFile" class="btn secondary">音楽を選択</label>
-                <input type="file" id="audioFile">
                 <span id="audioFileName" class="file-name">未選択</span>
             </div>
             <div class="file-input-group">
@@ -27,7 +27,7 @@
     <main>
         <!-- サイドバー：曲情報・エディタ設定 -->
         <aside class="sidebar">
-            <section class="panel">
+            <div class="panel">
                 <h2>曲情報</h2>
                 <div class="input-group">
                     <label>タイトル</label>
@@ -35,24 +35,22 @@
                 </div>
                 <div class="input-group">
                     <label>初期BPM</label>
-                    <input type="number" id="metaBpm" value="120" min="1" max="999">
+                    <input type="number" id="metaBpm" value="120">
                 </div>
                 <div class="input-group">
                     <label>OFFSET (秒)</label>
-                    <input type="number" id="metaOffset" value="0" step="0.01">
+                    <input type="number" step="0.01" id="metaOffset" value="0">
                 </div>
                 <div class="input-group">
                     <label>拍子</label>
                     <select id="metaMeasure">
-                        <option value="4/4">4/4</option>
+                        <option value="4/4" selected>4/4</option>
                         <option value="3/4">3/4</option>
-                        <option value="6/8">6/8</option>
                     </select>
                 </div>
-            </section>
+            </div>
 
-            <!-- BPM変化設定パネル -->
-            <section class="panel">
+            <div class="panel">
                 <h2>BPM変化設定</h2>
                 <div class="input-group">
                     <label>適用する小節</label>
@@ -60,13 +58,13 @@
                 </div>
                 <div class="input-group">
                     <label>新しいBPM</label>
-                    <input type="number" id="bpmChangeValue" value="150" min="1" max="999">
+                    <input type="number" id="bpmChangeValue" value="150">
                 </div>
                 <button id="addBpmChangeBtn" class="btn secondary full-width">BPM変化を追加</button>
                 <div id="bpmChangeList" class="bpm-list"></div>
-            </section>
+            </div>
 
-            <section class="panel">
+            <div class="panel">
                 <h2>ツールボックス</h2>
                 <div class="tool-grid">
                     <button class="tool-btn active" data-note="1">
@@ -81,23 +79,25 @@
                     <button class="tool-btn" data-note="4">
                         <img src="assets/img/Ka_2.png" alt="大カ"> 大カ
                     </button>
-                    <button class="tool-btn" data-note="0">空白</button>
+                    <button class="tool-btn" data-note="0" style="grid-column: span 2;">
+                        空白
+                    </button>
                     <button class="tool-btn delete" data-note="delete">削除</button>
                 </div>
-            </section>
+            </div>
 
-            <section class="panel">
+            <div class="panel">
                 <h2>再生コントロール</h2>
                 <div class="playback-controls">
-                    <button id="playBtn" class="btn success">再生 / 停止</button>
+                    <button id="playBtn" class="btn success" style="flex: 1;">再生 / 停止</button>
                     <button id="stopBtn" class="btn danger">最初から</button>
                 </div>
-            </section>
+            </div>
         </aside>
 
-        <!-- メイン：譜面エディタ・ビュー -->
-        <section class="editor-container">
-            <!-- 難易度切り替えタブ -->
+        <!-- メインエディタエリア -->
+        <div class="editor-container">
+            <!-- コースタブ -->
             <div class="course-tabs">
                 <button class="course-tab" data-course="easy">かんたん</button>
                 <button class="course-tab" data-course="normal">ふつう</button>
@@ -119,13 +119,577 @@
                     </select>
                 </div>
             </div>
-            
+
             <div id="measuresContainer" class="measures-container">
                 <!-- 小節が動的に生成されます -->
             </div>
-        </section>
+        </div>
     </main>
 
-    <script src="script.js"></script>
+    <script>
+// 状態管理（複数コース対応・拡張メタデータ対応）
+const state = {
+    bpm: 120,
+    offset: 0,
+    title: "sample",
+    subtitle: "",
+    demoStart: 0,
+    songVol: 100,
+    seVol: 100,
+    bgMovie: "",
+    movieOffset: 0,
+    measureType: "4/4",
+    subdivision: 16,
+    currentCourse: "oni",
+    courses: {
+        easy: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 3, balloon: "" },
+        normal: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 5, balloon: "" },
+        hard: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 7, balloon: "" },
+        oni: { exists: true, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 10, balloon: "10,10" },
+        edit: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 10, balloon: "" }
+    },
+    selectedTool: "1",
+    audioFile: null,
+    audioFileName: "未選択",
+    audioBuffer: null,
+    isPlaying: false,
+    startTime: 0,
+    audioContext: null,
+    audioSource: null,
+    playbackTime: 0,
+    lastCellIndex: -1
+};
+
+let soundBuffers = { don: null, ka: null };
+
+// DOM要素
+const metaTitle = document.getElementById("metaTitle");
+const metaBpm = document.getElementById("metaBpm");
+const metaOffset = document.getElementById("metaOffset");
+const metaMeasure = document.getElementById("metaMeasure");
+const subdivisionSelect = document.getElementById("subdivisionSelect");
+const measuresContainer = document.getElementById("measuresContainer");
+const audioFileInput = document.getElementById("audioFile");
+const importZipInput = document.getElementById("importZip");
+const audioFileNameSpan = document.getElementById("audioFileName");
+const playBtn = document.getElementById("playBtn");
+const stopBtn = document.getElementById("stopBtn");
+const downloadBtn = document.getElementById("downloadBtn");
+const currentTimeDisplay = document.getElementById("currentTimeDisplay");
+
+const bpmChangeMeasureInput = document.getElementById("bpmChangeMeasure");
+const bpmChangeValueInput = document.getElementById("bpmChangeValue");
+const addBpmChangeBtn = document.getElementById("addBpmChangeBtn");
+const bpmChangeList = document.getElementById("bpmChangeList");
+const courseTabs = document.querySelectorAll(".course-tab");
+
+window.addEventListener("DOMContentLoaded", () => {
+    initAudioContext();
+    loadSoundEffects();
+    setupEventListeners();
+    updateUIFromState();
+});
+
+function initAudioContext() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    state.audioContext = new AudioContext();
+}
+
+async function loadSoundEffects() {
+    try {
+        const donRes = await fetch("assets/audio/Neiro1_Don.ogg");
+        if (!donRes.ok) throw new Error();
+        soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
+
+        const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
+        if (!kaRes.ok) throw new Error();
+        soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+    } catch (e) {
+        console.warn("効果音の読み込みに失敗しました。", e);
+    }
+}
+
+function playSound(type) {
+    if (!state.audioContext) return;
+    let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
+    if (!buffer) return;
+    try {
+        const source = state.audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(state.audioContext.destination);
+        source.start(0);
+    } catch(e) {}
+}
+
+function setupEventListeners() {
+    metaTitle.addEventListener("input", (e) => state.title = e.target.value);
+    metaBpm.addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
+    metaOffset.addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
+    metaMeasure.addEventListener("change", (e) => state.measureType = e.target.value);
+
+    subdivisionSelect.addEventListener("change", (e) => {
+        state.subdivision = parseInt(e.target.value);
+        const measures = state.courses[state.currentCourse].measures;
+        state.courses[state.currentCourse].measures = measures.map(m => {
+            let newMeasure = Array(state.subdivision).fill(0);
+            for(let i=0; i<Math.min(m.length, state.subdivision); i++) newMeasure[i] = m[i];
+            return newMeasure;
+        });
+        renderEditor();
+    });
+
+    courseTabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            const selectedCourse = tab.getAttribute("data-course");
+            state.currentCourse = selectedCourse;
+
+            if (!state.courses[selectedCourse].measures || state.courses[selectedCourse].measures.length === 0) {
+                state.courses[selectedCourse].measures = Array(8).fill(0).map(() => Array(state.subdivision).fill(0));
+            }
+
+            updateUIFromState();
+        });
+    });
+
+    addBpmChangeBtn.addEventListener("click", () => {
+        const m = parseInt(bpmChangeMeasureInput.value);
+        const b = parseFloat(bpmChangeValueInput.value);
+        if (isNaN(m) || isNaN(b) || m < 1 || b <= 0) return;
+
+        const bpmChanges = state.courses[state.currentCourse].bpmChanges;
+        const existing = bpmChanges.find(item => item.measure === m);
+        if (existing) existing.bpm = b;
+        else {
+            bpmChanges.push({ measure: m, bpm: b });
+            bpmChanges.sort((a, b) => a.measure - b.measure);
+        }
+        renderBpmChanges();
+    });
+
+    document.querySelectorAll(".tool-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".tool-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            state.selectedTool = btn.getAttribute("data-note");
+        });
+    });
+
+    audioFileInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        await loadAudioFile(file);
+    });
+
+    importZipInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            const zip = new JSZip();
+            const zipContent = await zip.loadAsync(file);
+            let tjaText = "";
+            let audioFileObj = null;
+
+            for (let filename of Object.keys(zipContent.files)) {
+                const zipEntry = zipContent.files[filename];
+                if (filename.endsWith(".tja")) {
+                    tjaText = await zipEntry.async("text");
+                } else if (filename.match(/\.(ogg|mp3|wav)$/i)) {
+                    const blob = await zipEntry.async("blob");
+                    audioFileObj = new File([blob], filename, { type: blob.type });
+                }
+            }
+
+            if (!tjaText) {
+                alert("エラー: ZIP内にTJAファイルが見つかりませんでした。");
+                return;
+            }
+
+            parseTJA(tjaText);
+
+            if (audioFileObj) {
+                await loadAudioFile(audioFileObj);
+            }
+
+            metaTitle.value = state.title;
+            metaBpm.value = state.bpm;
+            metaOffset.value = state.offset;
+            updateUIFromState();
+            alert("TJAのインポートが完了しました！");
+        } catch (err) {
+            alert("エラー: ZIPファイルの解析に失敗しました。");
+            console.error(err);
+        }
+        importZipInput.value = "";
+    });
+
+    playBtn.addEventListener("click", togglePlay);
+    stopBtn.addEventListener("click", resetPlay);
+    downloadBtn.addEventListener("click", downloadZip);
+}
+
+async function loadAudioFile(file) {
+    state.audioFile = file;
+    state.audioFileName = file.name;
+    audioFileNameSpan.textContent = file.name;
+    try {
+        state.audioBuffer = await state.audioContext.decodeAudioData(await file.arrayBuffer());
+    } catch (err) {
+        alert("エラー: 音楽ファイルのデコードに失敗しました。");
+    }
+}
+
+function parseTJA(text) {
+    const lines = text.split(/\r?\n/);
+    
+    let globalMeta = {
+        title: "sample", subtitle: "", bpm: 120, offset: 0,
+        demoStart: 0, songVol: 100, seVol: 100, bgMovie: "", movieOffset: 0, wave: ""
+    };
+
+    const coursesData = {
+        easy: { exists: false, measures: [], bpmChanges: [], level: 3, balloon: "" },
+        normal: { exists: false, measures: [], bpmChanges: [], level: 5, balloon: "" },
+        hard: { exists: false, measures: [], bpmChanges: [], level: 7, balloon: "" },
+        oni: { exists: false, measures: [], bpmChanges: [], level: 10, balloon: "" },
+        edit: { exists: false, measures: [], bpmChanges: [], level: 10, balloon: "" }
+    };
+
+    let activeCourseKey = "oni";
+    let inCourse = false;
+    let currentMeasures = [];
+    let currentBpmChanges = [];
+    let currentLevel = 10;
+    let currentBalloon = "";
+
+    const courseMap = {
+        "0": "easy", "EASY": "easy",
+        "1": "normal", "NORMAL": "normal",
+        "2": "hard", "HARD": "hard",
+        "3": "oni", "ONI": "oni",
+        "4": "edit", "EDIT": "edit"
+    };
+
+    for (let rawLine of lines) {
+        let line = rawLine.trim();
+        if (!line || line.startsWith("//")) continue;
+
+        if (line.includes(":")) {
+            const colonIdx = line.indexOf(":");
+            const key = line.substring(0, colonIdx).trim().toUpperCase();
+            const val = line.substring(colonIdx + 1).trim();
+
+            if (!inCourse) {
+                if (key === "TITLE") globalMeta.title = val;
+                if (key === "SUBTITLE") globalMeta.subtitle = val;
+                if (key === "BPM") globalMeta.bpm = parseFloat(val) || 120;
+                if (key === "OFFSET") globalMeta.offset = parseFloat(val) || 0;
+                if (key === "DEMOSTART") globalMeta.demoStart = parseFloat(val) || 0;
+                if (key === "SONGVOL") globalMeta.songVol = parseInt(val) || 100;
+                if (key === "SEVOL") globalMeta.seVol = parseInt(val) || 100;
+                if (key === "BGMOVIE") globalMeta.bgMovie = val;
+                if (key === "MOVIEOFFSET") globalMeta.movieOffset = parseFloat(val) || 0;
+                if (key === "WAVE") globalMeta.wave = val;
+            }
+
+            if (key === "COURSE") {
+                const mapped = courseMap[val.toUpperCase()];
+                if (mapped) activeCourseKey = mapped;
+            }
+            if (key === "LEVEL") currentLevel = parseInt(val) || 10;
+            if (key === "BALLOON") currentBalloon = val;
+        }
+
+        if (line.toUpperCase() === "#START") {
+            inCourse = true;
+            currentMeasures = [];
+            currentBpmChanges = [];
+            currentLevel = 10;
+            currentBalloon = "";
+            continue;
+        }
+
+        if (line.toUpperCase() === "#END") {
+            inCourse = false;
+            coursesData[activeCourseKey] = {
+                exists: true,
+                measures: currentMeasures.length > 0 ? currentMeasures : [Array(16).fill(0)],
+                bpmChanges: currentBpmChanges,
+                level: currentLevel,
+                balloon: currentBalloon
+            };
+            continue;
+        }
+
+        if (inCourse) {
+            if (line.toUpperCase().startsWith("#BPMCHANGE")) {
+                const bpmVal = parseFloat(line.split(" ")[1] || line.split(":")[1]);
+                if (!isNaN(bpmVal)) {
+                    currentBpmChanges.push({ measure: currentMeasures.length + 1, bpm: bpmVal });
+                }
+                continue;
+            }
+
+            if (line.endsWith(",")) line = line.slice(0, -1);
+
+            if (line.length > 0 && !line.startsWith("#")) {
+                let notes = [];
+                for (let i = 0; i < line.length; i++) {
+                    let char = line[i];
+                    if (["0","1","2","3","4","5","6","7","8","9"].includes(char)) {
+                        notes.push(parseInt(char));
+                    }
+                }
+                if (notes.length > 0) currentMeasures.push(notes);
+            }
+        }
+    }
+
+    state.title = globalMeta.title;
+    state.bpm = globalMeta.bpm;
+    state.offset = globalMeta.offset;
+    state.subtitle = globalMeta.subtitle;
+    state.demoStart = globalMeta.demoStart;
+    state.songVol = globalMeta.songVol;
+    state.seVol = globalMeta.seVol;
+    state.bgMovie = globalMeta.bgMovie;
+    state.movieOffset = globalMeta.movieOffset;
+
+    Object.keys(coursesData).forEach(k => {
+        if (!coursesData[k].exists && coursesData[k].measures.length > 0 && coursesData[k].measures[0].some(n => n > 0)) {
+            coursesData[k].exists = true;
+        }
+    });
+
+    state.courses = coursesData;
+    const firstExisting = Object.keys(coursesData).find(k => coursesData[k].exists);
+    state.currentCourse = firstExisting || "oni";
+}
+
+function updateUIFromState() {
+    renderCourseTabs();
+    renderEditor();
+    renderBpmChanges();
+}
+
+function renderCourseTabs() {
+    courseTabs.forEach(tab => {
+        const courseKey = tab.getAttribute("data-course");
+        const courseInfo = state.courses[courseKey];
+        
+        if (courseInfo && courseInfo.exists) {
+            tab.classList.add("has-data");
+        } else {
+            tab.classList.remove("has-data");
+        }
+
+        if (courseKey === state.currentCourse) {
+            tab.classList.add("active");
+        } else {
+            tab.classList.remove("active");
+        }
+    });
+}
+
+function renderBpmChanges() {
+    bpmChangeList.innerHTML = "";
+    const bpmChanges = state.courses[state.currentCourse].bpmChanges;
+    bpmChanges.forEach((item, index) => {
+        const div = document.createElement("div");
+        div.className = "bpm-item";
+        div.innerHTML = `<span>#${item.measure}小節〜: BPM ${item.bpm}</span>`;
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "×";
+        delBtn.addEventListener("click", () => {
+            bpmChanges.splice(index, 1);
+            renderBpmChanges();
+        });
+        div.appendChild(delBtn);
+        bpmChangeList.appendChild(div);
+    });
+}
+
+function renderEditor() {
+    measuresContainer.innerHTML = "";
+    const courseData = state.courses[state.currentCourse];
+    const measures = courseData.measures;
+
+    if (measures.length > 0) {
+        state.subdivision = measures[0].length;
+        subdivisionSelect.value = state.subdivision.toString();
+    }
+
+    measures.forEach((measure, mIndex) => {
+        const row = document.createElement("div");
+        row.className = "measure-row";
+
+        const num = document.createElement("div");
+        num.className = "measure-number";
+        num.textContent = `#${mIndex + 1}`;
+        row.appendChild(num);
+
+        const notesDiv = document.createElement("div");
+        notesDiv.className = "measure-notes";
+
+        measure.forEach((note, nIndex) => {
+            const cell = document.createElement("div");
+            cell.className = "note-cell";
+            updateCellContent(cell, note);
+
+            cell.addEventListener("click", () => {
+                courseData.exists = true;
+                renderCourseTabs();
+                if (state.selectedTool === "delete") {
+                    measures[mIndex][nIndex] = 0;
+                } else {
+                    measures[mIndex][nIndex] = parseInt(state.selectedTool);
+                    playSound(state.selectedTool);
+                }
+                updateCellContent(cell, measures[mIndex][nIndex]);
+            });
+
+            notesDiv.appendChild(cell);
+        });
+
+        row.appendChild(notesDiv);
+        measuresContainer.appendChild(row);
+    });
+}
+
+function updateCellContent(cell, noteValue) {
+    cell.innerHTML = "";
+    if (noteValue === 0) return;
+
+    const img = document.createElement("img");
+    if (noteValue === 1) img.src = "assets/img/Don.png";
+    else if (noteValue === 2) img.src = "assets/img/Ka.png";
+    else if (noteValue === 3) img.src = "assets/img/Don_2.png";
+    else if (noteValue === 4) img.src = "assets/img/Ka_2.png";
+    else {
+        cell.textContent = noteValue;
+        return;
+    }
+    cell.appendChild(img);
+}
+
+function togglePlay() {
+    if (state.isPlaying) pausePlay();
+    else startPlay();
+}
+
+function startPlay() {
+    if (state.audioContext.state === "suspended") state.audioContext.resume();
+    state.isPlaying = true;
+    playBtn.textContent = "一時停止";
+
+    if (state.audioBuffer) {
+        if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+        state.audioSource = state.audioContext.createBufferSource();
+        state.audioSource.buffer = state.audioBuffer;
+        state.audioSource.connect(state.audioContext.destination);
+        state.audioSource.start(0, Math.max(0, state.playbackTime));
+    }
+
+    state.startTime = state.audioContext.currentTime - state.playbackTime;
+    requestAnimationFrame(updatePlayback);
+}
+
+function pausePlay() {
+    state.isPlaying = false;
+    playBtn.textContent = "再生 / 停止";
+    if (state.audioSource) {
+        try { state.audioSource.stop(); } catch(e) {}
+        state.audioSource = null;
+    }
+    if (state.audioBuffer) {
+        state.playbackTime = state.audioContext.currentTime - state.startTime;
+        if (state.playbackTime < 0) state.playbackTime = 0;
+    }
+}
+
+function resetPlay() {
+    pausePlay();
+    state.playbackTime = 0;
+    state.lastCellIndex = -1;
+    const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
+    currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
+}
+
+function updatePlayback() {
+    if (!state.isPlaying) return;
+    state.playbackTime = state.audioContext.currentTime - state.startTime;
+    const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
+
+    if (state.audioBuffer && state.playbackTime >= duration) {
+        resetPlay();
+        return;
+    }
+    currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
+    requestAnimationFrame(updatePlayback);
+}
+
+function generateTJA() {
+    let tja = `// PeepoDrumKit Export\n`;
+    tja += `TITLE:${state.title}\n`;
+    if (state.subtitle) tja += `SUBTITLE:${state.subtitle}\n`;
+    tja += `BPM:${state.bpm}\n`;
+    tja += `WAVE:${state.audioFile ? state.audioFile.name : "sample.ogg"}\n`;
+    tja += `OFFSET:${state.offset}\n`;
+    if (state.demoStart) tja += `DEMOSTART:${state.demoStart}\n`;
+    if (state.songVol !== 100) tja += `SONGVOL:${state.songVol}\n`;
+    if (state.seVol !== 100) tja += `SEVOL:${state.seVol}\n`;
+    if (state.bgMovie) tja += `BGMOVIE:${state.bgMovie}\n`;
+    if (state.movieOffset) tja += `MOVIEOFFSET:${state.movieOffset}\n`;
+    tja += `\n`;
+
+    const courseCodeMap = {
+        easy: { course: 0, name: "Easy" },
+        normal: { course: 1, name: "Normal" },
+        hard: { course: 2, name: "Hard" },
+        oni: { course: 3, name: "Oni" },
+        edit: { course: 4, name: "Edit" }
+    };
+
+    Object.keys(state.courses).forEach(key => {
+        const courseData = state.courses[key];
+        if (!courseData.exists) return;
+
+        const info = courseCodeMap[key];
+        tja += `COURSE:${info.name}\n`;
+        tja += `LEVEL:${courseData.level}\n`;
+        if (courseData.balloon) tja += `BALLOON:${courseData.balloon}\n`;
+        tja += `\n#START\n`;
+
+        courseData.measures.forEach((measure, mIndex) => {
+            const change = courseData.bpmChanges.find(item => item.measure === mIndex + 1);
+            if (change) {
+                tja += `#BPMCHANGE ${change.bpm}\n`;
+            }
+            tja += measure.join("") + ",\n";
+        });
+
+        tja += `#END\n\n`;
+    });
+
+    return tja;
+}
+
+async function downloadZip() {
+    const zip = new JSZip();
+    zip.file(`${state.title}.tja`, generateTJA());
+    if (state.audioFile) {
+        zip.file(state.audioFile.name, state.audioFile);
+    }
+    const content = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${state.title}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+    </script>
 </body>
 </html>
