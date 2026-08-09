@@ -307,7 +307,7 @@ const state = {
     lastActiveMIndex: -1
 };
 
-let soundBuffers = { don: null, ka: null };
+let soundBuffers = { don: null, ka: null, balloon: null };
 
 window.addEventListener("DOMContentLoaded", () => {
     initAudioContext();
@@ -327,6 +327,8 @@ async function loadSoundEffects() {
         if (donRes.ok) soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
         const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
         if (kaRes.ok) soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+        const balloonRes = await fetch("assets/audio/se_balloon.ogg");
+        if (balloonRes.ok) soundBuffers.balloon = await state.audioContext.decodeAudioData(await balloonRes.arrayBuffer());
     } catch (e) {
         console.warn("効果音の読み込みに失敗しました。");
     }
@@ -334,7 +336,11 @@ async function loadSoundEffects() {
 
 function playSound(type) {
     if (!state.audioContext || state.audioContext.state === "suspended") state.audioContext.resume();
-    let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
+    let buffer = null;
+    if (type === "1" || type === "3") buffer = soundBuffers.don;
+    else if (type === "2" || type === "4") buffer = soundBuffers.ka;
+    else if (type === "balloon") buffer = soundBuffers.balloon;
+    
     if (!buffer) return;
     try {
         const source = state.audioContext.createBufferSource();
@@ -746,6 +752,7 @@ function resetPlay() {
     state.lastActiveMIndex = -1;
     lastRendaSoundTime = 0;
     activeBalloonData = null;
+    playedBalloonPopKeys.clear();
     document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
@@ -753,7 +760,8 @@ function resetPlay() {
 let lastHighlightedRow = null;
 let lastHighlightedCell = null;
 let lastRendaSoundTime = 0;
-let activeBalloonData = null; // 現在処理中の風船情報
+let activeBalloonData = null;
+let playedBalloonPopKeys = new Set(); // 風船が割れた音を重複して鳴らさないための管理
 
 function clearMeasureHighlight() {
     if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
@@ -769,6 +777,7 @@ function updateLastPlayedNoteIndex() {
     state.lastActiveMIndex = -1;
     lastRendaSoundTime = 0;
     activeBalloonData = null;
+    playedBalloonPopKeys.clear();
 }
 
 function updatePlayback() {
@@ -817,8 +826,7 @@ function updatePlayback() {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
                 
-                // 次の音符、あるいは対応する風船終了(9)までの時間を探して風船全体の持続時間を決定する
-                let balloonEndTime = noteTime + 1.0; // デフォルト幅
+                let balloonEndTime = noteTime + 1.0;
                 let foundEnd = false;
                 let sm = m, sn = n + 1;
                 let searchLimit = 0;
@@ -826,7 +834,6 @@ function updatePlayback() {
                     while (sn < course.measures[sm].length) {
                         let nextVal = course.measures[sm][sn];
                         if (nextVal === 9 || nextVal > 0) {
-                            // 次のノーツや終了地点までの時間を計算
                             let tempBpm = scanBpm;
                             let tempTime = -state.offset;
                             let targetTimeAcc = 0;
@@ -859,19 +866,27 @@ function updatePlayback() {
                     sn = 0;
                 }
 
-                // 風船が始まってから終わるまでの時間
                 let balloonDuration = Math.max(0.2, balloonEndTime - noteTime);
-                let balloonStartActive = noteTime + 0.02; // 開始時の最初の音と被らないようにわずかにずらす
+                let balloonStartActive = noteTime + 0.02;
 
+                // 風船の時間内に入っている場合
                 if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
                     isCurrentlyInRenda = true;
-                    // 風船の打数に合わせて、時間内に綺麗に割り切れるように間隔(interval)を算出
                     let interval = balloonDuration / Math.max(1, balloonCount);
                     foundBalloonThisFrame = {
                         key: countKey,
                         interval: interval,
-                        startTime: balloonStartActive
+                        startTime: balloonStartActive,
+                        endTime: noteTime + balloonDuration
                     };
+                } else if (state.playbackTime > noteTime + balloonDuration) {
+                    // 風船の時間が終了した瞬間（まだこの再生中に割れ音を鳴らしていなければ鳴らす）
+                    if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
+                        if (!playedBalloonPopKeys.has(countKey)) {
+                            playSound("balloon");
+                            playedBalloonPopKeys.add(countKey);
+                        }
+                    }
                 }
             }
             noteGlobalIndex++;
@@ -885,7 +900,6 @@ function updatePlayback() {
             lastRendaSoundTime = activeBalloonData.startTime;
         }
 
-        // 算出された均等な間隔で音を鳴らす
         if (state.playbackTime - lastRendaSoundTime >= activeBalloonData.interval) {
             playSound("1");
             lastRendaSoundTime += activeBalloonData.interval;
@@ -898,7 +912,6 @@ function updatePlayback() {
     }
 
     if (isCurrentlyInRenda && !foundBalloonThisFrame) {
-        // 通常連打用
         if (state.playbackTime - lastRendaSoundTime >= 0.11) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
@@ -929,7 +942,6 @@ function updatePlayback() {
                     if (val >= 1 && val <= 4) {
                         playSound(val.toString());
                     } else if (val === 7) {
-                        // 風船の頭の音
                         playSound("1");
                     }
                     state.lastPlayedNoteIndex = noteGlobalIndex;
