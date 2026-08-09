@@ -561,6 +561,7 @@ function updateUIFromState() {
     const measures = course.measures;
 
     let isInsideRenda = false;
+    let isInsideBalloon = false;
 
     measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
@@ -597,6 +598,7 @@ function updateUIFromState() {
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
             } else if (note === 7) {
+                isInsideBalloon = true;
                 cell.classList.add("balloon-start");
                 const countKey = `${mIndex}-${nIndex}`;
                 if (course.balloonCounts[countKey] === undefined) {
@@ -607,7 +609,12 @@ function updateUIFromState() {
                 badge.textContent = course.balloonCounts[countKey];
                 cell.appendChild(badge);
             } else if (note === 9) {
-                cell.classList.add("balloon-end");
+                if (isInsideBalloon) {
+                    cell.classList.add("balloon-end");
+                    isInsideBalloon = false;
+                }
+            } else if (isInsideBalloon) {
+                cell.classList.add("renda-body"); // 風船の胴体部分も連打と同様につなげる
             }
 
             updateCellContent(cell, note);
@@ -761,7 +768,7 @@ let lastHighlightedRow = null;
 let lastHighlightedCell = null;
 let lastRendaSoundTime = 0;
 let activeBalloonData = null;
-let playedBalloonPopKeys = new Set(); // 風船が割れた音を重複して鳴らさないための管理
+let playedBalloonPopKeys = new Set();
 
 function clearMeasureHighlight() {
     if (lastHighlightedRow) lastHighlightedRow.classList.remove("playing");
@@ -869,7 +876,6 @@ function updatePlayback() {
                 let balloonDuration = Math.max(0.2, balloonEndTime - noteTime);
                 let balloonStartActive = noteTime + 0.02;
 
-                // 風船の時間内に入っている場合
                 if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
                     isCurrentlyInRenda = true;
                     let interval = balloonDuration / Math.max(1, balloonCount);
@@ -880,7 +886,6 @@ function updatePlayback() {
                         endTime: noteTime + balloonDuration
                     };
                 } else if (state.playbackTime > noteTime + balloonDuration) {
-                    // 風船の時間が終了した瞬間（まだこの再生中に割れ音を鳴らしていなければ鳴らす）
                     if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
                         if (!playedBalloonPopKeys.has(countKey)) {
                             playSound("balloon");
@@ -1018,11 +1023,7 @@ function generateTJA() {
             
             let lineStr = "";
             for (let i = 0; i < meas.length; i++) {
-                if (meas[i] === 9) {
-                    lineStr += "0";
-                } else {
-                    lineStr += meas[i];
-                }
+                lineStr += meas[i];
             }
             tja += lineStr + ",\n";
         });
