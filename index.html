@@ -116,7 +116,6 @@
             border-left: none;
         }
 
-        /* 風船：7とすぐ隣の8で完結させるスタイル */
         .note-cell.balloon-left {
             background-image: url('assets/img/Balloon.png');
             background-position: left center;
@@ -132,7 +131,6 @@
             border-left: none;
         }
 
-        /* 空白のセルに上から被せる「終点マーク（ここまでだよー！の印）」 */
         .note-cell.balloon-endpoint-overlay::after {
             content: "";
             position: absolute;
@@ -140,7 +138,7 @@
             bottom: 4px;
             left: 50%;
             width: 4px;
-            background-color: #ff5722; /* 好きな色や独自の画像に変更可能です */
+            background-color: #ff5722;
             transform: translateX(-50%);
             border-radius: 2px;
             pointer-events: none;
@@ -605,7 +603,7 @@ function updateUIFromState() {
     });
 
     let noteStatusMap = {};
-    let balloonEndpointMap = {}; // 8があった元の位置（見た目の終点マークを上乗せする場所）
+    let balloonEndpointMap = {};
 
     flatNotes.forEach(item => {
         if (item.status) {
@@ -613,7 +611,6 @@ function updateUIFromState() {
         }
     });
 
-    // 7と8のペアを追跡し、風船なら「7のすぐ隣に8」に見せかけ、元の8の場所をエンドポイントとして登録する
     let activeBalloonStarts = [];
     flatNotes.forEach((item, idx) => {
         if (item.note === 7) {
@@ -621,13 +618,11 @@ function updateUIFromState() {
         } else if (item.note === 8 && activeBalloonStarts.length > 0) {
             let startIdx = activeBalloonStarts.shift();
             let startItem = flatNotes[startIdx];
-            // 7のすぐ隣（startIdx + 1）を「見た目上の風船の右側(8相当)」にする
             if (startIdx + 1 < flatNotes.length) {
                 let neighbor = flatNotes[startIdx + 1];
                 noteStatusMap[`${startItem.mIndex}-${startItem.nIndex}`] = 'balloon-left';
                 noteStatusMap[`${neighbor.mIndex}-${neighbor.nIndex}`] = 'balloon-right';
             }
-            // 本来の8があった場所には「終点マーク」を上乗せする
             balloonEndpointMap[`${item.mIndex}-${item.nIndex}`] = true;
         }
     });
@@ -659,13 +654,13 @@ function updateUIFromState() {
             const statusKey = `${mIndex}-${nIndex}`;
             const status = noteStatusMap[statusKey];
 
-            if (status === 'renda-start') {
+            if (status === 'renda-start' || note === 5 || note === 6) {
                 cell.classList.add("renda-start");
             } else if (status === 'renda-body') {
                 cell.classList.add("renda-body");
             } else if (status === 'renda-end') {
                 cell.classList.add("renda-end");
-            } else if (status === 'balloon-left') {
+            } else if (status === 'balloon-left' || note === 7) {
                 cell.classList.add("balloon-left");
                 const countKey = `${mIndex}-${nIndex}`;
                 if (course.balloonCounts[countKey] === undefined) {
@@ -677,20 +672,8 @@ function updateUIFromState() {
                 cell.appendChild(badge);
             } else if (status === 'balloon-right') {
                 cell.classList.add("balloon-right");
-            } else {
-                if (note === 5 || note === 6) cell.classList.add("renda-start");
-                if (note === 7) {
-                    cell.classList.add("balloon-left");
-                    const countKey = `${mIndex}-${nIndex}`;
-                    if (course.balloonCounts[countKey] === undefined) course.balloonCounts[countKey] = 5;
-                    const badge = document.createElement("span");
-                    badge.className = "balloon-count-badge";
-                    badge.textContent = course.balloonCounts[countKey];
-                    cell.appendChild(badge);
-                }
             }
 
-            // 元の8があった位置（空白セル）には終点マークを上から被せる
             if (balloonEndpointMap[statusKey]) {
                 cell.classList.add("balloon-endpoint-overlay");
             }
@@ -774,8 +757,6 @@ function updateCellContent(cell, val, status) {
         else if (val === 3) img.src = "assets/img/Don_2.png";
         else if (val === 4) img.src = "assets/img/Ka_2.png";
         cell.appendChild(img);
-    } else if (status === 'balloon-right') {
-        // balloon-rightは画像ではなく背景（Balloon.pngの右半分）で表現されるため画像タグは追加しない
     }
 }
 
