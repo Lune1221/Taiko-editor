@@ -42,17 +42,10 @@ async function loadSoundEffects() {
         const donRes = await fetch("./assets/audio/Neiro1_Don.ogg");
         if (donRes.ok) {
             soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
-            console.log("ドン音の読み込みに成功しました");
-        } else {
-            console.error("ドン音が見つかりません。ステータス:", donRes.status);
         }
-
         const kaRes = await fetch("./assets/audio/Neiro1_Ka.ogg");
         if (kaRes.ok) {
             soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
-            console.log("カ音の読み込みに成功しました");
-        } else {
-            console.error("カ音が見つかりません。ステータス:", kaRes.status);
         }
     } catch (e) {
         console.warn("効果音の読み込みに失敗しました。", e);
@@ -70,9 +63,7 @@ function playSound(type) {
         source.buffer = buffer;
         source.connect(state.audioContext.destination);
         source.start(0);
-    } catch(e) {
-        console.error("音声再生エラー:", e);
-    }
+    } catch(e) {}
 }
 
 function setupEventListeners() {
@@ -86,12 +77,9 @@ function setupEventListeners() {
     document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
-    // 小節移動（同時に音声のシーク位置も計算して移動）
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("jumpMeasureInput").value);
-        if (m > 0) {
-            jumpToMeasure(m - 1);
-        }
+        if (m > 0) jumpToMeasure(m - 1);
     });
 
     document.getElementById("subdivisionSelect").addEventListener("change", (e) => {
@@ -161,7 +149,6 @@ function setupEventListeners() {
     });
 }
 
-// 指定小節の開始秒数計算＆ジャンプ
 function jumpToMeasure(mIndex) {
     const course = state.courses[state.currentCourse];
     let currentBpm = state.bpm;
@@ -179,9 +166,6 @@ function jumpToMeasure(mIndex) {
     const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetM}"]`);
     if (targetRow) {
         targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        targetRow.style.transition = 'background-color 0.5s';
-        targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-        setTimeout(() => targetRow.style.backgroundColor = '', 1000);
     }
 
     seekToTime(targetTime);
@@ -306,6 +290,7 @@ function updateUIFromState() {
         measure.forEach((note, nIndex) => {
             const cell = document.createElement("div");
             cell.className = "note-cell";
+            cell.dataset.noteIndex = nIndex; // 高速化用の目印
             
             if (note === 5 || note === 6) {
                 isInsideRenda = true;
@@ -345,11 +330,11 @@ function updateCellContent(cell, val) {
         else if (val === 2) img.src = "assets/img/Ka.png";
         else if (val === 3) {
             img.src = "assets/img/Don_2.png";
-            img.classList.add("big-note"); // 大ドン
+            img.classList.add("big-note");
         }
         else if (val === 4) {
             img.src = "assets/img/Ka_2.png";
-            img.classList.add("big-note"); // 大カ
+            img.classList.add("big-note");
         }
         cell.appendChild(img);
     }
@@ -391,7 +376,7 @@ function resetPlay() {
 }
 
 function clearMeasureHighlight() {
-    document.querySelectorAll(".measure-row").forEach(r => r.classList.remove("playing"));
+    document.querySelectorAll(".measure-row.playing").forEach(r => r.classList.remove("playing"));
     document.querySelectorAll(".note-cell.playing-note").forEach(c => c.classList.remove("playing-note"));
 }
 
@@ -400,7 +385,10 @@ function updateLastPlayedNoteIndex() {
     state.lastActiveMIndex = -1;
 }
 
-// 軽量化済みの再生・ハイライト更新処理
+// 【超高速化版】DOM全体検索を廃止し、変更があった部分のみ直接更新する再生処理
+let prevActiveM = -1;
+let prevActiveN = -1;
+
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
@@ -448,6 +436,7 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
+    // 小節のスクロール
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
         const targetMIndex = Math.max(0, activeMIndex - 1);
@@ -457,22 +446,35 @@ function updatePlayback() {
         }
     }
 
-    const rows = document.querySelectorAll(".measure-row");
-    rows.forEach((row, idx) => {
-        const isPlayingRow = (idx === activeMIndex);
-        
-        if (isPlayingRow !== row.classList.contains("playing")) {
-            row.classList.toggle("playing", isPlayingRow);
+    // 【高速化の核心】前回と異なる部分だけクラスを付け替える（全検索ゼロ）
+    if (prevActiveM !== activeMIndex || prevActiveN !== activeNIndex) {
+        // 前回のハイライトを消す
+        if (prevActiveM !== -1) {
+            const prevRow = document.querySelector(`.measure-row[data-measure-index="${prevActiveM}"]`);
+            if (prevRow) {
+                if (prevActiveM !== activeMIndex) prevRow.classList.remove("playing");
+                if (prevActiveN !== -1) {
+                    const prevCell = prevRow.querySelector(`.note-cell[data-note-index="${prevActiveN}"]`);
+                    if (prevCell) prevCell.classList.remove("playing-note");
+                }
+            }
         }
 
-        const cells = row.querySelectorAll(".note-cell");
-        cells.forEach((cell, cellIdx) => {
-            const isPlayingCell = (isPlayingRow && cellIdx === activeNIndex);
-            if (isPlayingCell !== cell.classList.contains("playing-note")) {
-                cell.classList.toggle("playing-note", isPlayingCell);
+        // 今回のハイライトをつける
+        if (activeMIndex !== -1) {
+            const curRow = document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`);
+            if (curRow) {
+                curRow.classList.add("playing");
+                if (activeNIndex !== -1) {
+                    const curCell = curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`);
+                    if (curCell) curCell.classList.add("playing-note");
+                }
             }
-        });
-    });
+        }
+
+        prevActiveM = activeMIndex;
+        prevActiveN = activeNIndex;
+    }
 
     requestAnimationFrame(updatePlayback);
 }
