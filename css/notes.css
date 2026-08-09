@@ -15,20 +15,43 @@
     overflow: hidden;
 }
 
-.note-cell.renda-start, .note-cell.renda-body, .note-cell.renda-end {
+.note-cell.renda-start {
     background-image: url('../assets/img/Renda.png');
+    background-position: left center;
     background-size: auto 100%;
+    border-radius: 4px 0 0 4px;
+    border-right: none;
 }
-.note-cell.renda-start { background-position: left center; border-radius: 4px 0 0 4px; border-right: none; }
-.note-cell.renda-body { background-position: center center; border-radius: 0; border-inline: none; }
-.note-cell.renda-end { background-position: right center; border-radius: 0 4px 4px 0; border-left: none; }
+.note-cell.renda-body {
+    background-image: url('../assets/img/Renda.png');
+    background-position: center center;
+    background-size: auto 100%;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+}
+.note-cell.renda-end {
+    background-image: url('../assets/img/Renda.png');
+    background-position: right center;
+    background-size: auto 100%;
+    border-radius: 0 4px 4px 0;
+    border-left: none;
+}
 
-.note-cell.balloon-left, .note-cell.balloon-right {
+.note-cell.balloon-left {
     background-image: url('../assets/img/Balloon.png');
+    background-position: left center;
     background-size: 200% 100%;
+    border-radius: 4px 0 0 4px;
+    border-right: none;
 }
-.note-cell.balloon-left { background-position: left center; border-radius: 4px 0 0 4px; border-right: none; }
-.note-cell.balloon-right { background-position: right center; border-radius: 0 4px 4px 0; border-left: none; }
+.note-cell.balloon-right {
+    background-image: url('../assets/img/Balloon.png');
+    background-position: right center;
+    background-size: 200% 100%;
+    border-radius: 0 4px 4px 0;
+    border-left: none;
+}
 
 .note-cell.balloon-endpoint-overlay::after {
     content: "";
@@ -44,14 +67,23 @@
     box-shadow: 0 0 4px rgba(255, 87, 34, 0.8);
 }
 
-.note-cell img { width: 24px; height: 24px; pointer-events: none; }
-.note-cell img.big-note { width: 32px; height: 32px; }
+.note-cell img {
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+}
+
+.note-cell img.big-note {
+    width: 32px;
+    height: 32px;
+}
 
 .note-cell.playing-note {
     background-color: #4a4a60 !important;
     border-color: #ffff80 !important;
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
 }
+
 .note-cell.playing-note img {
     filter: brightness(1.5) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
     transform: scale(1.15);
