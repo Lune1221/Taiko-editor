@@ -502,10 +502,8 @@ function updateUIFromState() {
                 }
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
-                // もしこの小節内に 8 が含まれておらず、かつこのセルの直後に 8 が無い状態で小節が終わる場合の対策
             }
 
-            // 万が一、小節の途中で 8 が来ていたら確実にフラグを折る
             if (note === 8) {
                 isInsideRenda = false;
             }
@@ -524,9 +522,6 @@ function updateUIFromState() {
             });
             notesDiv.appendChild(cell);
         });
-        
-        // 小節の終わりで、もし 8 が無いまま小節をまたぐ場合は次の小節へ引き継ぐが、
-        // もしこの小節のどこかに 8 があれば、小節の終わりには必ずフラグがオフになるようにする
         row.appendChild(notesDiv);
         container.appendChild(row);
     });
@@ -654,10 +649,8 @@ function updatePlayback() {
             }
 
             if (val === 8) {
-                globalInsideRenda = false;
-                // もし再生時間がちょうどこの終点 8 の位置にいる、または過ぎた瞬間であれば連打を即座に切る
                 if (state.playbackTime >= noteTime) {
-                    isCurrentlyInRenda = false;
+                    globalInsideRenda = false;
                 }
             }
 
@@ -666,7 +659,8 @@ function updatePlayback() {
         accumulatedTime += mTime;
     }
 
-    if (isCurrentlyInRenda && globalInsideRenda) {
+    // 連打区間内であれば確実に音を鳴らす
+    if (globalInsideRenda) {
         if (state.playbackTime - lastRendaSoundTime >= 0.1) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
