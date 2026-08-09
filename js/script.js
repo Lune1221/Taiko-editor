@@ -39,17 +39,30 @@ function initAudioContext() {
 
 async function loadSoundEffects() {
     try {
-        const donRes = await fetch("assets/audio/Neiro1_Don.ogg");
-        if (donRes.ok) soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
-        const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
-        if (kaRes.ok) soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+        const donRes = await fetch("./assets/audio/Neiro1_Don.ogg");
+        if (donRes.ok) {
+            soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
+            console.log("ドン音の読み込みに成功しました");
+        } else {
+            console.error("ドン音が見つかりません。ステータス:", donRes.status);
+        }
+
+        const kaRes = await fetch("./assets/audio/Neiro1_Ka.ogg");
+        if (kaRes.ok) {
+            soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+            console.log("カ音の読み込みに成功しました");
+        } else {
+            console.error("カ音が見つかりません。ステータス:", kaRes.status);
+        }
     } catch (e) {
-        console.warn("効果音の読み込みに失敗しました。");
+        console.warn("効果音の読み込みに失敗しました。", e);
     }
 }
 
 function playSound(type) {
-    if (!state.audioContext || state.audioContext.state === "suspended") state.audioContext.resume();
+    if (!state.audioContext || state.audioContext.state === "suspended") {
+        state.audioContext.resume();
+    }
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
     if (!buffer) return;
     try {
@@ -57,12 +70,16 @@ function playSound(type) {
         source.buffer = buffer;
         source.connect(state.audioContext.destination);
         source.start(0);
-    } catch(e) {}
+    } catch(e) {
+        console.error("音声再生エラー:", e);
+    }
 }
 
 function setupEventListeners() {
     document.addEventListener("pointerdown", () => {
-        if (state.audioContext && state.audioContext.state === "suspended") state.audioContext.resume();
+        if (state.audioContext && state.audioContext.state === "suspended") {
+            state.audioContext.resume();
+        }
     }, { once: true });
 
     document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
