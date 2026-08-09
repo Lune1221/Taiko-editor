@@ -116,18 +116,18 @@
             border-left: none;
         }
 
-        /* 風船用分割スタイル (Balloon.pngを連打のように左右に分ける) */
+        /* 風船用分割スタイル */
         .note-cell.balloon-start {
             background-image: url('assets/img/Balloon.png');
             background-position: left center;
-            background-size: 200% 100%; /* 2倍の幅にして左側を表示 */
+            background-size: 200% 100%;
             border-radius: 4px 0 0 4px;
             border-right: none;
         }
         .note-cell.balloon-end {
             background-image: url('assets/img/Balloon.png');
             background-position: right center;
-            background-size: 200% 100%; /* 2倍の幅にして右側を表示 */
+            background-size: 200% 100%;
             border-radius: 0 4px 4px 0;
             border-left: none;
         }
@@ -136,9 +136,8 @@
             width: 28px;
             height: 28px;
             pointer-events: none;
-            display: none; /* 背景画像で表現するためimgタグは非表示 */
         }
-        .note-cell.playing-note {
+        .note-cell.playing-note img {
             filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
             transform: scale(1.15) translateZ(0);
         }
@@ -606,6 +605,8 @@ function updateUIFromState() {
                 cell.classList.add("balloon-end");
             }
 
+            updateCellContent(cell, note);
+
             cell.addEventListener("click", () => {
                 course.exists = true;
                 if (state.selectedTool === "delete") {
@@ -615,7 +616,6 @@ function updateUIFromState() {
                         if (nIndex + 1 < measure.length && measure[nIndex + 1] === 9) {
                             measures[mIndex][nIndex + 1] = 0;
                         } else if (nIndex + 1 >= measure.length && mIndex + 1 < measures.length) {
-                            // 次の小節の先頭にまたがっている場合
                             if (measures[mIndex + 1][0] === 9) measures[mIndex + 1][0] = 0;
                         }
                     } else if (note === 9) {
@@ -624,7 +624,6 @@ function updateUIFromState() {
                             delete course.balloonCounts[`${mIndex}-${nIndex - 1}`];
                             measures[mIndex][nIndex - 1] = 0;
                         } else if (nIndex === 0 && mIndex - 1 >= 0) {
-                            // 前の小節の末尾にある風船を探して削除
                             const prevMeas = measures[mIndex - 1];
                             const lastIdx = prevMeas.length - 1;
                             if (prevMeas[lastIdx] === 7) {
@@ -639,16 +638,10 @@ function updateUIFromState() {
                     const val = parseInt(state.selectedTool);
                     if (val === 7) {
                         let targetMeasure = measures[mIndex];
-                        let targetNIndex = nIndex;
-                        let isCrossMeasure = false;
-
                         if (nIndex + 1 < targetMeasure.length) {
-                            // 同一小節内に収まる場合
                             targetMeasure[nIndex] = 7;
                             targetMeasure[nIndex + 1] = 9;
                         } else if (mIndex + 1 < measures.length) {
-                            // 小節の末尾で、次の小節にまたがる場合
-                            isCrossMeasure = true;
                             targetMeasure[nIndex] = 7;
                             measures[mIndex + 1][0] = 9;
                         } else {
@@ -708,6 +701,17 @@ function updateUIFromState() {
 
         container.appendChild(row);
     });
+}
+
+function updateCellContent(cell, val) {
+    if ((val >= 1 && val <= 4)) {
+        const img = document.createElement("img");
+        if (val === 1) img.src = "assets/img/Don.png";
+        else if (val === 2) img.src = "assets/img/Ka.png";
+        else if (val === 3) img.src = "assets/img/Don_2.png";
+        else if (val === 4) img.src = "assets/img/Ka_2.png";
+        cell.appendChild(img);
+    }
 }
 
 function togglePlay() {
@@ -811,7 +815,6 @@ function updatePlayback() {
                 const countKey = `${m}-${n}`;
                 const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
                 if (balloonCount > 0) {
-                    // またぎを考慮して2マス分の時間を判定
                     let spanTime = stepTime * 2;
                     if (state.playbackTime >= noteTime && state.playbackTime <= noteTime + spanTime) {
                         isCurrentlyInRenda = true;
