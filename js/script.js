@@ -289,8 +289,6 @@ function updateUIFromState() {
                 }
             } else if (isInsideRenda) {
                 cell.classList.add("renda-body");
-            } else if (note === 7) {
-                cell.classList.add("balloon-left");
             }
 
             updateCellContent(cell, note);
@@ -326,10 +324,6 @@ function updateCellContent(cell, val) {
             img.classList.add("big-note");
         }
         cell.appendChild(img);
-    } else if (val === 5 || val === 6) {
-        cell.classList.add("renda-start");
-    } else if (val === 7) {
-        cell.classList.add("balloon-left");
     }
 }
 
