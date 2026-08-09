@@ -167,6 +167,9 @@ const state = {
     lastActiveMIndex: -1
 };
 
+// 計算済みキャッシュデータ保持用
+let cachedTimingData = null;
+
 let soundBuffers = { don: null, ka: null, balloon: null };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -216,8 +219,8 @@ function setupEventListeners() {
     }, { once: true });
 
     document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
-    document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
-    document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
+    document.getElementById("metaBpm").addEventListener("change", (e) => { state.bpm = parseFloat(e.target.value) || 120; buildTimingCache(); });
+    document.getElementById("metaOffset").addEventListener("input", (e) => { state.offset = parseFloat(e.target.value) || 0; buildTimingCache(); });
 
     document.getElementById("addBpmChangeBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("bpmChangeMeasure").value);
@@ -228,6 +231,7 @@ function setupEventListeners() {
             course.bpmChanges.push({ measure: m, bpm: b });
             course.bpmChanges.sort((x, y) => x.measure - y.measure);
             updateBpmChangeListUI();
+            buildTimingCache();
         }
     });
 
@@ -236,6 +240,7 @@ function setupEventListeners() {
         course.exists = true;
         course.measures.push(Array(state.subdivision).fill(0));
         updateUIFromState();
+        buildTimingCache();
     });
 
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
@@ -262,6 +267,7 @@ function setupEventListeners() {
                 state.courses[state.currentCourse].measures = [Array(state.subdivision).fill(0)];
             }
             updateUIFromState();
+            buildTimingCache();
         });
     });
 
@@ -301,6 +307,7 @@ function setupEventListeners() {
             document.getElementById("metaBpm").value = state.bpm;
             document.getElementById("metaOffset").value = state.offset;
             updateUIFromState();
+            buildTimingCache();
         } catch (err) {
             alert("エラー: ZIPファイルの解析に失敗しました。");
         }
@@ -326,7 +333,7 @@ function setupEventListeners() {
         }
         updateLastPlayedNoteIndex();
     });
-}
+});
 
 async function loadAudioFile(file) {
     state.audioFile = file;
@@ -456,6 +463,64 @@ function parseTJA(text) {
 
     const firstCourse = Object.keys(state.courses).find(k => state.courses[k].exists);
     if(firstCourse) state.currentCourse = firstCourse;
+    buildTimingCache();
+}
+
+// 【超高速化】再生前に全ノート・小節のタイムラインを一度だけ計算してキャッシュする
+function buildTimingCache() {
+    const course = state.courses[state.currentCourse];
+    let scanBpm = state.bpm;
+    let scanTime = -state.offset;
+    let currentFraction = "4/4";
+    let noteGlobalIndex = 0;
+
+    let measuresCache = [];
+    let notesCache = [];
+
+    course.measures.forEach((measure, m) => {
+        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
+        if (bChange) scanBpm = bChange.bpm;
+        if (course.measureChanges[m]) currentFraction = course.measureChanges[m];
+
+        let mMultiplier = 1.0;
+        const parts = currentFraction.split("/");
+        if (parts.length === 2) {
+            const num = parseFloat(parts[0]);
+            const den = parseFloat(parts[1]);
+            if (!isNaN(num) && !isNaN(den) && den > 0) {
+                mMultiplier = num / (den / 4);
+            }
+        }
+
+        const mTime = (60 / scanBpm) * 4 * mMultiplier;
+        const sub = measure.length;
+        const stepTime = mTime / sub;
+
+        measuresCache.push({
+            mIndex: m,
+            startTime: scanTime,
+            endTime: scanTime + mTime
+        });
+
+        measure.forEach((val, n) => {
+            const noteTime = scanTime + (n * stepTime);
+            notesCache.push({
+                globalIndex: noteGlobalIndex++,
+                mIndex: m,
+                nIndex: n,
+                time: noteTime,
+                stepTime: stepTime,
+                val: val
+            });
+        });
+
+        scanTime += mTime;
+    });
+
+    cachedTimingData = {
+        measures: measuresCache,
+        notes: notesCache
+    };
 }
 
 function updateBpmChangeListUI() {
@@ -476,6 +541,7 @@ function updateBpmChangeListUI() {
         btn.onclick = () => {
             course.bpmChanges = course.bpmChanges.filter(i => i.measure !== item.measure);
             updateBpmChangeListUI();
+            buildTimingCache();
         };
         row.appendChild(btn);
         listDiv.appendChild(row);
@@ -634,6 +700,7 @@ function updateUIFromState() {
                     }
                 }
                 updateUIFromState();
+                buildTimingCache();
             });
             notesDiv.appendChild(cell);
         });
@@ -671,6 +738,7 @@ function updateUIFromState() {
                     });
                     course.measures[mIndex] = newArr;
                     updateUIFromState();
+                    buildTimingCache();
                 }
             }
         });
@@ -706,6 +774,7 @@ function updateUIFromState() {
         insertBtn.addEventListener("click", () => {
             measures.splice(mIndex + 1, 0, Array(state.subdivision).fill(0));
             updateUIFromState();
+            buildTimingCache();
         });
 
         const deleteBtn = document.createElement("button");
@@ -715,6 +784,7 @@ function updateUIFromState() {
             if (measures.length > 1) {
                 measures.splice(mIndex, 1);
                 updateUIFromState();
+                buildTimingCache();
             } else {
                 alert("最後の小節は削除できません。");
             }
@@ -766,6 +836,7 @@ function togglePlay() {
             state.audioSource.start(0, Math.max(0, state.playbackTime));
         }
         state.startTime = state.audioContext.currentTime - state.playbackTime;
+        if (!cachedTimingData) buildTimingCache();
         requestAnimationFrame(updatePlayback);
     }
 }
@@ -805,7 +876,7 @@ function updateLastPlayedNoteIndex() {
     playedBalloonPopKeys.clear();
 }
 
-// 【超軽量化版】小節切替時のみスクロール＆クラス変更を行うことでラグを完全解消
+// 【キャッシュ駆動型】毎フレームの重い再計算を一切排除した最速の再生ループ
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
@@ -817,97 +888,79 @@ function updatePlayback() {
         document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
 
-    const course = state.courses[state.currentCourse];
-    let noteGlobalIndex = 0;
-    
+    if (!cachedTimingData) buildTimingCache();
+    const { measures, notes } = cachedTimingData;
+
     let activeMIndex = -1;
     let activeNIndex = -1;
     let isCurrentlyInRenda = false;
-
-    let scanBpm = state.bpm;
-    let scanTime = -state.offset;
     let currentRendaStart = -1;
-    let foundBalloonThisFrame = null;
-    let currentFraction = "4/4";
+    let foundBalloonThisField = null;
 
-    for (let m = 0; m < course.measures.length; m++) {
-        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
-        if (bChange) scanBpm = bChange.bpm;
-        if (course.measureChanges[m]) currentFraction = course.measureChanges[m];
-
-        let mMultiplier = 1.0;
-        const parts = currentFraction.split("/");
-        if (parts.length === 2) {
-            const num = parseFloat(parts[0]);
-            const den = parseFloat(parts[1]);
-            if (!isNaN(num) && !isNaN(den) && den > 0) {
-                mMultiplier = num / (den / 4);
-            }
+    // 小節判定を高速キャッシュから特定
+    for (let i = 0; i < measures.length; i++) {
+        if (state.playbackTime >= measures[i].startTime && state.playbackTime < measures[i].endTime) {
+            activeMIndex = measures[i].mIndex;
+            break;
         }
-
-        const mTime = (60 / scanBpm) * 4 * mMultiplier;
-        const sub = course.measures[m].length;
-        const stepTime = mTime / sub;
-
-        if (state.playbackTime >= scanTime && state.playbackTime < scanTime + mTime) {
-            activeMIndex = m;
-        }
-
-        for (let n = 0; n < sub; n++) {
-            const noteTime = scanTime + (n * stepTime);
-            const val = course.measures[m][n];
-
-            if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
-                activeNIndex = n;
-                if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
-                    if (val >= 1 && val <= 4) {
-                        playSound(val.toString());
-                    } else if (val === 7) {
-                        playSound("1");
-                    }
-                    state.lastPlayedNoteIndex = noteGlobalIndex;
-                }
-            }
-
-            if (val === 5 || val === 6) {
-                currentRendaStart = noteTime;
-            } else if (val === 8 && currentRendaStart !== -1) {
-                if (state.playbackTime >= currentRendaStart && state.playbackTime <= noteTime) {
-                    isCurrentlyInRenda = true;
-                }
-                currentRendaStart = -1;
-            } else if (val === 7) {
-                const countKey = `${m}-${n}`;
-                const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
-                let balloonDuration = 1.0;
-                let balloonStartActive = noteTime + 0.02;
-
-                if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
-                    isCurrentlyInRenda = true;
-                    let interval = balloonDuration / Math.max(1, balloonCount);
-                    foundBalloonThisFrame = {
-                        key: countKey,
-                        interval: interval,
-                        startTime: balloonStartActive,
-                        endTime: noteTime + balloonDuration
-                    };
-                } else if (state.playbackTime > noteTime + balloonDuration) {
-                    if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
-                        if (!playedBalloonPopKeys.has(countKey)) {
-                            playSound("balloon");
-                            playedBalloonPopKeys.add(countKey);
-                        }
-                    }
-                }
-            }
-            noteGlobalIndex++;
-        }
-        scanTime += mTime;
     }
 
-    if (foundBalloonThisFrame) {
-        if (!activeBalloonData || activeBalloonData.key !== foundBalloonThisFrame.key) {
-            activeBalloonData = foundBalloonThisFrame;
+    // ノート判定を高速キャッシュから走査
+    for (let i = 0; i < notes.length; i++) {
+        const item = notes[i];
+        const noteTime = item.time;
+        const stepTime = item.stepTime;
+        const val = item.val;
+
+        if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
+            activeNIndex = item.nIndex;
+            if (state.lastPlayedNoteIndex !== item.globalIndex) {
+                if (val >= 1 && val <= 4) {
+                    playSound(val.toString());
+                } else if (val === 7) {
+                    playSound("1");
+                }
+                state.lastPlayedNoteIndex = item.globalIndex;
+            }
+        }
+
+        if (val === 5 || val === 6) {
+            currentRendaStart = noteTime;
+        } else if (val === 8 && currentRendaStart !== -1) {
+            if (state.playbackTime >= currentRendaStart && state.playbackTime <= noteTime) {
+                isCurrentlyInRenda = true;
+            }
+            currentRendaStart = -1;
+        } else if (val === 7) {
+            const countKey = `${item.mIndex}-${item.nIndex}`;
+            const course = state.courses[state.currentCourse];
+            const balloonCount = course.balloonCounts[countKey] !== undefined ? course.balloonCounts[countKey] : 5;
+            let balloonDuration = 1.0;
+            let balloonStartActive = noteTime + 0.02;
+
+            if (state.playbackTime >= balloonStartActive && state.playbackTime <= noteTime + balloonDuration) {
+                isCurrentlyInRenda = true;
+                let interval = balloonDuration / Math.max(1, balloonCount);
+                foundBalloonThisField = {
+                    key: countKey,
+                    interval: interval,
+                    startTime: balloonStartActive,
+                    endTime: noteTime + balloonDuration
+                };
+            } else if (state.playbackTime > noteTime + balloonDuration) {
+                if (state.playbackTime <= noteTime + balloonDuration + 0.1) {
+                    if (!playedBalloonPopKeys.has(countKey)) {
+                        playSound("balloon");
+                        playedBalloonPopKeys.add(countKey);
+                    }
+                }
+            }
+        }
+    }
+
+    if (foundBalloonThisField) {
+        if (!activeBalloonData || activeBalloonData.key !== foundBalloonThisField.key) {
+            activeBalloonData = foundBalloonThisField;
             lastRendaSoundTime = activeBalloonData.startTime;
         }
 
@@ -922,14 +975,14 @@ function updatePlayback() {
         }
     }
 
-    if (isCurrentlyInRenda && !foundBalloonThisFrame) {
+    if (isCurrentlyInRenda && !foundBalloonThisField) {
         if (state.playbackTime - lastRendaSoundTime >= 0.11) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
         }
     }
 
-    // 小節変更時のみスクロールとクラス付けを更新（高負荷対策）
+    // 小節変更時のみスクロールとクラスを更新
     if (activeMIndex !== -1 && activeMIndex !== state.lastActiveMIndex) {
         state.lastActiveMIndex = activeMIndex;
         
@@ -942,7 +995,8 @@ function updatePlayback() {
         }
     }
 
-    // ノート単位のハイライト更新
+    // ノートのハイライト更新
+    const course = state.courses[state.currentCourse];
     const curRow = activeMIndex !== -1 ? document.querySelector(`.measure-row[data-measure-index="${activeMIndex}"]`) : null;
     const curCell = (curRow && activeNIndex !== -1) ? curRow.querySelector(`.note-cell[data-note-index="${activeNIndex}"]`) : null;
 
