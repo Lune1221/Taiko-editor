@@ -86,16 +86,11 @@ function setupEventListeners() {
     document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
     document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
+    // 【修正】小節移動ボタン（同時に音声の位置も計算してシーク移動）
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("jumpMeasureInput").value);
-        if(m > 0) {
-            const targetRow = document.querySelector(`.measure-row[data-measure-index="${m - 1}"]`);
-            if(targetRow) {
-                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                targetRow.style.transition = 'background-color 0.5s';
-                targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                setTimeout(() => targetRow.style.backgroundColor = '', 1000);
-            }
+        if (m > 0) {
+            jumpToMeasure(m - 1);
         }
     });
 
@@ -162,18 +157,57 @@ function setupEventListeners() {
     const seekBar = document.getElementById("seekBar");
     seekBar.addEventListener("input", (e) => {
         if (!state.audioBuffer) return;
-        state.playbackTime = (parseFloat(e.target.value) / 100) * state.audioBuffer.duration;
-        
-        if (state.isPlaying) {
-            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
-            state.audioSource = state.audioContext.createBufferSource();
-            state.audioSource.buffer = state.audioBuffer;
-            state.audioSource.connect(state.audioContext.destination);
-            state.audioSource.start(0, state.playbackTime);
-            state.startTime = state.audioContext.currentTime - state.playbackTime;
-        }
-        updateLastPlayedNoteIndex();
+        seekToTime((parseFloat(e.target.value) / 100) * state.audioBuffer.duration);
     });
+}
+
+// 【新規】指定小節の開始秒数を計算してそこへジャンプする機能
+function jumpToMeasure(mIndex) {
+    const course = state.courses[state.currentCourse];
+    let currentBpm = state.bpm;
+    let targetTime = -state.offset;
+
+    // 指定の小節までの経過時間を計算
+    const targetM = Math.min(mIndex, course.measures.length - 1);
+    for (let i = 0; i < targetM; i++) {
+        const bChange = course.bpmChanges.find(bc => bc.measure === i + 1);
+        if (bChange) currentBpm = bChange.bpm;
+        targetTime += (60 / currentBpm) * 4;
+    }
+
+    if (targetTime < 0) targetTime = 0;
+
+    // 視点（スクロール）を該当小節へ移動
+    const targetRow = document.querySelector(`.measure-row[data-measure-index="${targetM}"]`);
+    if (targetRow) {
+        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetRow.style.transition = 'background-color 0.5s';
+        targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+        setTimeout(() => targetRow.style.backgroundColor = '', 1000);
+    }
+
+    // 楽曲の再生位置（再生秒数）も合わせる
+    seekToTime(targetTime);
+}
+
+// 時間（秒）の指定位置にシーク再生移動する関数
+function seekToTime(timeInSeconds) {
+    state.playbackTime = Math.max(0, timeInSeconds);
+    
+    if (state.audioBuffer && state.audioBuffer.duration > 0) {
+        const percent = (state.playbackTime / state.audioBuffer.duration) * 100;
+        document.getElementById("seekBar").value = Math.min(100, percent);
+    }
+
+    if (state.isPlaying) {
+        if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+        state.audioSource = state.audioContext.createBufferSource();
+        state.audioSource.buffer = state.audioBuffer;
+        state.audioSource.connect(state.audioContext.destination);
+        state.audioSource.start(0, state.playbackTime);
+        state.startTime = state.audioContext.currentTime - state.playbackTime;
+    }
+    updateLastPlayedNoteIndex();
 }
 
 async function loadAudioFile(file) {
@@ -308,13 +342,20 @@ function updateUIFromState() {
     });
 }
 
+// 【修正】大音符の判別用クラス（big-note）の処理を追加
 function updateCellContent(cell, val) {
     if (val >= 1 && val <= 4) {
         const img = document.createElement("img");
         if (val === 1) img.src = "assets/img/Don.png";
         else if (val === 2) img.src = "assets/img/Ka.png";
-        else if (val === 3) img.src = "assets/img/Don_2.png";
-        else if (val === 4) img.src = "assets/img/Ka_2.png";
+        else if (val === 3) {
+            img.src = "assets/img/Don_2.png";
+            img.classList.add("big-note"); // 大ドン
+        }
+        else if (val === 4) {
+            img.src = "assets/img/Ka_2.png";
+            img.classList.add("big-note"); // 大カ
+        }
         cell.appendChild(img);
     }
 }
@@ -364,6 +405,7 @@ function updateLastPlayedNoteIndex() {
     state.lastActiveMIndex = -1;
 }
 
+// 【修正】空白ノーツ（値が0）のセルでも playing-note クラスを付与して光らせるように変更
 function updatePlayback() {
     if (!state.isPlaying) return;
     state.playbackTime = state.audioContext.currentTime - state.startTime;
@@ -426,7 +468,8 @@ function updatePlayback() {
             row.classList.add("playing");
             const cells = row.querySelectorAll(".note-cell");
             cells.forEach((cell, cellIdx) => {
-                if (cellIdx === activeNIndex && course.measures[activeMIndex][cellIdx] !== 0) {
+                // 【変更箇所】ノーツが空白（0）でも該当タイミングであれば光らせる
+                if (cellIdx === activeNIndex) {
                     cell.classList.add("playing-note");
                 } else {
                     cell.classList.remove("playing-note");
