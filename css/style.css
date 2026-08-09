@@ -58,6 +58,8 @@
     transition: all 0.1s ease;
     box-sizing: border-box;
     background-repeat: no-repeat;
+    position: relative;
+    overflow: hidden;
 }
 
 /* --- 連打ノーツ（1枚のRenda.pngから切り分け） --- */
@@ -84,16 +86,32 @@
     border-left: none;
 }
 
+/* 通常ノーツ */
 .note-cell img {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     pointer-events: none;
+    transition: transform 0.05s ease;
 }
+
+/* 大音符（ドン_2 / カ_2）は大きく表示 */
+.note-cell img.big-note {
+    width: 32px;
+    height: 32px;
+}
+
+/* 再生中のセル強調（ノーツ画像なし/空白セルでも光る） */
+.note-cell.playing-note {
+    background-color: #4a4a60 !important;
+    border-color: #ffff80 !important;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+}
+
 .note-cell.playing-note img {
-    filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+    filter: brightness(1.5) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
     transform: scale(1.15);
-    transition: all 0.05s ease;
 }
+
 .seek-bar-container {
     margin-top: 8px;
     display: flex;
