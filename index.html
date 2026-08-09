@@ -613,8 +613,42 @@ function updatePlayback() {
     let activeNIndex = -1;
     let isCurrentlyInRenda = false;
 
-    let globalInsideRenda = false;
+    // 毎フレーム、全ノートを走査して「今この瞬間が本当に対象の連打区間内か」を厳密に計算する
+    let rendaStartTime = -1;
+    let rendaEndTime = -1;
 
+    // まず全ノートの時間位置をスキャンして、それぞれの連打の開始・終了時間を正確に特定する
+    let scanBpm = state.bpm;
+    let scanTime = -state.offset;
+    let currentRendaStart = -1;
+
+    for (let m = 0; m < course.measures.length; m++) {
+        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
+        if (bChange) scanBpm = bChange.bpm;
+        const mTime = (60 / scanBpm) * 4;
+        const sub = course.measures[m].length;
+        const stepTime = mTime / sub;
+
+        for (let n = 0; n < sub; n++) {
+            const noteTime = scanTime + (n * stepTime);
+            const val = course.measures[m][n];
+
+            if (val === 5 || val === 6 || val === 7) {
+                currentRendaStart = noteTime;
+            } else if (val === 8 && currentRendaStart !== -1) {
+                // 現在の再生時間がこの連打の開始〜終了の範囲内にあるかチェック
+                if (state.playbackTime >= currentRendaStart && state.playbackTime <= noteTime) {
+                    isCurrentlyInRenda = true;
+                }
+                currentRendaStart = -1;
+            }
+            noteGlobalIndex++;
+        }
+        scanTime += mTime;
+    }
+
+    // 通常のノート再生判定ループ
+    noteGlobalIndex = 0;
     for (let m = 0; m < course.measures.length; m++) {
         const bChange = course.bpmChanges.find(i => i.measure === m + 1);
         if (bChange) currentBpm = bChange.bpm;
@@ -631,15 +665,8 @@ function updatePlayback() {
             const noteTime = accumulatedTime + (n * stepTime);
             const val = course.measures[m][n];
 
-            if (val === 5 || val === 6 || val === 7) {
-                globalInsideRenda = true;
-            }
-
             if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
                 activeNIndex = n;
-                if (globalInsideRenda) {
-                    isCurrentlyInRenda = true;
-                }
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
                     if (val >= 1 && val <= 4) {
                         playSound(val.toString());
@@ -647,20 +674,13 @@ function updatePlayback() {
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
             }
-
-            if (val === 8) {
-                if (state.playbackTime >= noteTime) {
-                    globalInsideRenda = false;
-                }
-            }
-
             noteGlobalIndex++;
         }
         accumulatedTime += mTime;
     }
 
-    // 連打区間内であれば確実に音を鳴らす
-    if (globalInsideRenda) {
+    // 正確に連打区間内である場合のみ連打音を鳴らす
+    if (isCurrentlyInRenda) {
         if (state.playbackTime - lastRendaSoundTime >= 0.1) {
             playSound("1");
             lastRendaSoundTime = state.playbackTime;
