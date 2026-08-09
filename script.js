@@ -64,10 +64,8 @@ async function loadSoundEffects() {
         if (!kaRes.ok) throw new Error("Ka.oggが見つかりません");
         const kaArrayBuffer = await kaRes.arrayBuffer();
         soundBuffers.ka = await state.audioContext.decodeAudioData(kaArrayBuffer);
-        
-        console.log("効果音の読み込みが完了しました");
     } catch (e) {
-        console.warn("効果音の読み込みに失敗しました。assets/audio/ フォルダにファイルが存在するか、Live Server等を使用しているか確認してください。", e);
+        console.warn("効果音の読み込みに失敗しました（Live Server環境か確認してください）。", e);
     }
 }
 
@@ -76,7 +74,6 @@ function playSound(type) {
     if (!state.audioContext) return;
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
     
-    // バッファが読み込まれていない場合のフォールバック（Web Audio APIのオシレーターで代用音を鳴らす）
     if (!buffer) {
         playFallbackSound(type);
         return;
@@ -92,7 +89,6 @@ function playSound(type) {
     }
 }
 
-// 画像ファイルや効果音がない環境でも音が鳴るようにする予備の音
 function playFallbackSound(type) {
     try {
         const osc = state.audioContext.createOscillator();
@@ -113,7 +109,11 @@ function setupEventListeners() {
     metaBpm.addEventListener("change", (e) => {
         state.bpm = parseFloat(e.target.value) || 120;
     });
-    metaOffset.addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
+    
+    // OFFSETが変更されたときの処理
+    metaOffset.addEventListener("input", (e) => {
+        state.offset = parseFloat(e.target.value) || 0;
+    });
     
     metaMeasure.addEventListener("change", (e) => {
         state.measureType = e.target.value;
@@ -156,7 +156,6 @@ function setupEventListeners() {
         try {
             const arrayBuffer = await file.arrayBuffer();
             state.audioBuffer = await state.audioContext.decodeAudioData(arrayBuffer);
-            console.log("音楽ファイルが正常にデコードされました");
         } catch (err) {
             alert("エラー: 音楽ファイルの読み込みに失敗しました。");
             console.error(err);
@@ -220,12 +219,11 @@ function updateCellContent(cell, noteValue) {
     cell.appendChild(img);
 }
 
-// 再生 / 一時停止の切り替え
 function togglePlay() {
     if (state.isPlaying) {
-        pausePlay(); // その場で止める（一時停止）
+        pausePlay();
     } else {
-        startPlay(); // 再開 / スタート
+        startPlay();
     }
 }
 
@@ -238,21 +236,28 @@ function startPlay() {
     playBtn.textContent = "一時停止";
 
     if (state.audioBuffer) {
-        // 前回の続きから再生するために古いソースがあれば停止
         if (state.audioSource) {
             try { state.audioSource.stop(); } catch(e) {}
         }
         state.audioSource = state.audioContext.createBufferSource();
         state.audioSource.buffer = state.audioBuffer;
         state.audioSource.connect(state.audioContext.destination);
-        state.audioSource.start(0, state.playbackTime);
+        
+        // オフセットを考慮した音声再生開始位置の計算
+        // playbackTime が 0 のとき、offset が正なら少し遅らせて再生、負なら途中から再生
+        let audioPlayTime = state.playbackTime - state.offset;
+        if (audioPlayTime < 0) {
+            // 曲のスタート前（無音部分）のときは音楽の再生は0秒地点から待機
+            state.audioSource.start(state.audioContext.currentTime + Math.abs(audioPlayTime), 0);
+        } else if (audioPlayTime < state.audioBuffer.duration) {
+            state.audioSource.start(0, audioPlayTime);
+        }
     }
 
     state.startTime = state.audioContext.currentTime - state.playbackTime;
     requestAnimationFrame(updatePlayback);
 }
 
-// その場で止める（一時停止）
 function pausePlay() {
     state.isPlaying = false;
     playBtn.textContent = "再生 / 停止";
@@ -260,15 +265,12 @@ function pausePlay() {
         try { state.audioSource.stop(); } catch(e) {}
         state.audioSource = null;
     }
-    // 現在の再生位置を保持する
     if (state.audioBuffer) {
         state.playbackTime = state.audioContext.currentTime - state.startTime;
         if (state.playbackTime < 0) state.playbackTime = 0;
-        if (state.playbackTime > state.audioBuffer.duration) state.playbackTime = state.audioBuffer.duration;
     }
 }
 
-// 最初からに戻すボタン用
 function resetPlay() {
     pausePlay();
     state.playbackTime = 0;
@@ -277,36 +279,40 @@ function resetPlay() {
     currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
 }
 
-// 再生中の自動演奏とタイミング同期
+// 再生中の自動演奏（OFFSETを考慮した同期処理）
 function updatePlayback() {
     if (!state.isPlaying) return;
     
     state.playbackTime = state.audioContext.currentTime - state.startTime;
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
-    if (state.audioBuffer && state.playbackTime >= duration) {
+    if (state.audioBuffer && state.playbackTime >= duration + Math.max(0, -state.offset)) {
         resetPlay();
         return;
     }
     
-    // BPMから1セルの時間を計算
-    const secondsPerBeat = 60 / state.bpm;
-    const secondsPerMeasure = secondsPerBeat * 4;
-    const secondsPerCell = secondsPerMeasure / state.subdivision;
+    // 【重要】譜面判定のタイミングからオフセット（秒）を引くことで、音楽と譜面のズレを同期させる
+    const chartTime = state.playbackTime - state.offset;
 
-    if (secondsPerCell > 0) {
-        const totalCells = Math.floor(state.playbackTime / secondsPerCell);
-        const mIndex = Math.floor(totalCells / state.subdivision);
-        const nIndex = totalCells % state.subdivision;
+    if (chartTime >= 0) {
+        const secondsPerBeat = 60 / state.bpm;
+        const secondsPerMeasure = secondsPerBeat * 4; // 4/4拍子ベース
+        const secondsPerCell = secondsPerMeasure / state.subdivision;
 
-        if (state.lastCellIndex !== totalCells && mIndex < state.measures.length) {
-            if (nIndex >= 0 && nIndex < state.measures[mIndex].length) {
-                const note = state.measures[mIndex][nIndex];
-                if (note > 0) {
-                    playSound(note.toString());
+        if (secondsPerCell > 0) {
+            const totalCells = Math.floor(chartTime / secondsPerCell);
+            const mIndex = Math.floor(totalCells / state.subdivision);
+            const nIndex = totalCells % state.subdivision;
+
+            if (state.lastCellIndex !== totalCells && mIndex < state.measures.length) {
+                if (nIndex >= 0 && nIndex < state.measures[mIndex].length) {
+                    const note = state.measures[mIndex][nIndex];
+                    if (note > 0) {
+                        playSound(note.toString());
+                    }
                 }
+                state.lastCellIndex = totalCells;
             }
-            state.lastCellIndex = totalCells;
         }
     }
 
