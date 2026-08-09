@@ -1,16 +1,21 @@
-// 状態管理
+// 状態管理（複数コース対応）
 const state = {
     bpm: 120,
     offset: 0,
     title: "sample",
     measureType: "4/4",
     subdivision: 16,
-    measuresCount: 8,
-    measures: Array(8).fill(0).map(() => Array(16).fill(0)),
-    bpmChanges: [], // 例: [{ measure: 3, bpm: 150 }]
+    currentCourse: "oni", // 現在選択中のコース (easy, normal, hard, oni, edit)
+    courses: {
+        easy: { measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [] },
+        normal: { measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [] },
+        hard: { measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [] },
+        oni: { measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [] },
+        edit: { measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [] }
+    },
     selectedTool: "1",
     audioFile: null,
-    audioFileName: "未選択",
+    audioFileName: "未名前",
     audioBuffer: null,
     isPlaying: false,
     startTime: 0,
@@ -44,13 +49,13 @@ const bpmChangeMeasureInput = document.getElementById("bpmChangeMeasure");
 const bpmChangeValueInput = document.getElementById("bpmChangeValue");
 const addBpmChangeBtn = document.getElementById("addBpmChangeBtn");
 const bpmChangeList = document.getElementById("bpmChangeList");
+const courseTabs = document.querySelectorAll(".course-tab");
 
 window.addEventListener("DOMContentLoaded", () => {
     initAudioContext();
     loadSoundEffects();
     setupEventListeners();
-    renderEditor();
-    renderBpmChanges();
+    updateUIFromState();
 });
 
 function initAudioContext() {
@@ -118,7 +123,8 @@ function setupEventListeners() {
 
     subdivisionSelect.addEventListener("change", (e) => {
         state.subdivision = parseInt(e.target.value);
-        state.measures = state.measures.map(m => {
+        const measures = state.courses[state.currentCourse].measures;
+        state.courses[state.currentCourse].measures = measures.map(m => {
             let newMeasure = Array(state.subdivision).fill(0);
             for(let i=0; i<Math.min(m.length, state.subdivision); i++) {
                 newMeasure[i] = m[i];
@@ -128,18 +134,28 @@ function setupEventListeners() {
         renderEditor();
     });
 
+    // コースタブ切り替え
+    courseTabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            courseTabs.forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            state.currentCourse = tab.getAttribute("data-course");
+            updateUIFromState();
+        });
+    });
+
     addBpmChangeBtn.addEventListener("click", () => {
         const m = parseInt(bpmChangeMeasureInput.value);
         const b = parseFloat(bpmChangeValueInput.value);
         if (isNaN(m) || isNaN(b) || m < 1 || b <= 0) return;
 
-        // すでに同じ小節に設定があれば上書き、なければ追加
-        const existing = state.bpmChanges.find(item => item.measure === m);
+        const bpmChanges = state.courses[state.currentCourse].bpmChanges;
+        const existing = bpmChanges.find(item => item.measure === m);
         if (existing) {
             existing.bpm = b;
         } else {
-            state.bpmChanges.push({ measure: m, bpm: b });
-            state.bpmChanges.sort((a, b) => a.measure - b.measure);
+            bpmChanges.push({ measure: m, bpm: b });
+            bpmChanges.sort((a, b) => a.measure - b.measure);
         }
         renderBpmChanges();
     });
@@ -163,7 +179,7 @@ function setupEventListeners() {
         await loadAudioFile(file);
     });
 
-    // ZIPインポート機能
+    // ZIPインポート機能（複数コース対応）
     importZipInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -174,7 +190,6 @@ function setupEventListeners() {
             
             let tjaText = "";
             let audioFileObj = null;
-            let audioFileNameStr = "";
 
             for (let filename of Object.keys(zipContent.files)) {
                 const zipEntry = zipContent.files[filename];
@@ -183,7 +198,6 @@ function setupEventListeners() {
                 } else if (filename.match(/\.(ogg|mp3|wav)$/i)) {
                     const blob = await zipEntry.async("blob");
                     audioFileObj = new File([blob], filename, { type: blob.type });
-                    audioFileNameStr = filename;
                 }
             }
 
@@ -201,8 +215,7 @@ function setupEventListeners() {
             metaTitle.value = state.title;
             metaBpm.value = state.bpm;
             metaOffset.value = state.offset;
-            renderEditor();
-            renderBpmChanges();
+            updateUIFromState();
             alert("ZIPファイルのインポートに成功しました！");
 
         } catch (err) {
@@ -229,48 +242,83 @@ async function loadAudioFile(file) {
     }
 }
 
-// TJAファイルの簡易パーサー
+// 複数コース対応TJAパーサー
 function parseTJA(text) {
     const lines = text.split(/\r?\n/);
     let title = "sample";
     let bpm = 120;
     let offset = 0;
-    let measures = [];
-    let currentMeasureNotes = [];
-    let bpmChanges = [];
+    
+    // 全コース初期化
+    const coursesData = {
+        easy: { measures: [], bpmChanges: [] },
+        normal: { measures: [], bpmChanges: [] },
+        hard: { measures: [], bpmChanges: [] },
+        oni: { measures: [], bpmChanges: [] },
+        edit: { measures: [], bpmChanges: [] }
+    };
+
+    let activeCourseKey = "oni";
     let inCourse = false;
+    let currentMeasures = [];
+    let currentBpmChanges = [];
+
+    const courseMap = {
+        "0": "easy",
+        "1": "normal",
+        "2": "hard",
+        "3": "oni",
+        "4": "edit",
+        "EASY": "easy",
+        "NORMAL": "normal",
+        "HARD": "hard",
+        "ONI": "oni",
+        "EDIT": "edit"
+    };
 
     for (let line of lines) {
         line = line.trim();
         if (line.startsWith("TITLE:")) title = line.substring(6).trim();
         if (line.startsWith("BPM:")) bpm = parseFloat(line.substring(4)) || 120;
         if (line.startsWith("OFFSET:")) offset = parseFloat(line.substring(7)) || 0;
+
+        if (line.toUpperCase().startsWith("COURSE:")) {
+            const val = line.substring(7).trim().toUpperCase();
+            if (courseMap[val]) {
+                activeCourseKey = courseMap[val];
+            }
+        }
+
         if (line.startsWith("#START")) {
             inCourse = true;
+            currentMeasures = [];
+            currentBpmChanges = [];
             continue;
         }
+
         if (line.startsWith("#END")) {
             inCourse = false;
-            break;
+            coursesData[activeCourseKey] = {
+                measures: currentMeasures.length > 0 ? currentMeasures : [Array(16).fill(0)],
+                bpmChanges: currentBpmChanges
+            };
+            continue;
         }
 
         if (inCourse) {
-            // BPM変更タグの検出 (#BPMCHANGE:xxx)
             if (line.toUpperCase().startsWith("#BPMCHANGE:")) {
                 const newBpm = parseFloat(line.substring(11));
                 if (!isNaN(newBpm)) {
-                    bpmChanges.push({ measure: measures.length + 1, bpm: newBpm });
+                    currentBpmChanges.push({ measure: currentMeasures.length + 1, bpm: newBpm });
                 }
                 continue;
             }
 
-            // 小節終わりのカンマ
             if (line.endsWith(",")) {
                 line = line.slice(0, -1);
             }
 
             if (line.length > 0) {
-                // 文字列をノート配列に分解
                 let notes = [];
                 for (let i = 0; i < line.length; i++) {
                     let char = line[i];
@@ -279,33 +327,44 @@ function parseTJA(text) {
                     }
                 }
                 if (notes.length > 0) {
-                    measures.push(notes);
+                    currentMeasures.push(notes);
                 }
             }
         }
     }
 
-    if (measures.length > 0) {
-        state.measures = measures;
-        state.subdivision = measures[0].length;
-        subdivisionSelect.value = state.subdivision.toString();
-    }
     state.title = title;
     state.bpm = bpm;
     state.offset = offset;
-    state.bpmChanges = bpmChanges;
+    
+    // データが空のコースにはデフォルトの空小節を設定
+    Object.keys(coursesData).forEach(key => {
+        if (coursesData[key].measures.length === 0) {
+            coursesData[key].measures = Array(8).fill(0).map(() => Array(16).fill(0));
+        }
+    });
+
+    state.courses = coursesData;
+    // デフォルトで最初に見つかった音符があるコース、またはoniを選択
+    state.currentCourse = "oni";
+}
+
+function updateUIFromState() {
+    renderEditor();
+    renderBpmChanges();
 }
 
 function renderBpmChanges() {
     bpmChangeList.innerHTML = "";
-    state.bpmChanges.forEach((item, index) => {
+    const bpmChanges = state.courses[state.currentCourse].bpmChanges;
+    bpmChanges.forEach((item, index) => {
         const div = document.createElement("div");
         div.className = "bpm-item";
         div.innerHTML = `<span>#${item.measure}小節〜: BPM ${item.bpm}</span>`;
         const delBtn = document.createElement("button");
         delBtn.textContent = "×";
         delBtn.addEventListener("click", () => {
-            state.bpmChanges.splice(index, 1);
+            bpmChanges.splice(index, 1);
             renderBpmChanges();
         });
         div.appendChild(delBtn);
@@ -315,8 +374,15 @@ function renderBpmChanges() {
 
 function renderEditor() {
     measuresContainer.innerHTML = "";
+    const courseData = state.courses[state.currentCourse];
+    const measures = courseData.measures;
 
-    state.measures.forEach((measure, mIndex) => {
+    if (measures.length > 0) {
+        state.subdivision = measures[0].length;
+        subdivisionSelect.value = state.subdivision.toString();
+    }
+
+    measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
         row.className = "measure-row";
 
@@ -336,12 +402,12 @@ function renderEditor() {
 
             cell.addEventListener("click", () => {
                 if (state.selectedTool === "delete") {
-                    state.measures[mIndex][nIndex] = 0;
+                    measures[mIndex][nIndex] = 0;
                 } else {
-                    state.measures[mIndex][nIndex] = parseInt(state.selectedTool);
+                    measures[mIndex][nIndex] = parseInt(state.selectedTool);
                     playSound(state.selectedTool);
                 }
-                updateCellContent(cell, state.measures[mIndex][nIndex]);
+                updateCellContent(cell, measures[mIndex][nIndex]);
             });
 
             notesDiv.appendChild(cell);
@@ -416,7 +482,6 @@ function resetPlay() {
     currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
 }
 
-// 複数BPM変化を考慮した時間計算
 function updatePlayback() {
     if (!state.isPlaying) return;
     
@@ -429,27 +494,25 @@ function updatePlayback() {
     }
     
     const chartTime = state.playbackTime + state.offset;
+    const courseData = state.courses[state.currentCourse];
 
     if (chartTime >= 0) {
-        // 現在のchartTimeがどの小節・どのセルに該当するかをBPM変化を考慮して計算
         let currentBpm = state.bpm;
         let accumulatedTime = 0;
         let targetMeasure = 0;
         let targetCell = 0;
         let found = false;
 
-        // 各小節の長さを計算しながら現在位置を特定
-        for (let m = 0; m < state.measures.length; m++) {
-            // この小節の途中でBPMが切り替わるかチェック
-            const change = state.bpmChanges.find(item => item.measure === m + 1);
+        for (let m = 0; m < courseData.measures.length; m++) {
+            const change = courseData.bpmChanges.find(item => item.measure === m + 1);
             if (change) {
                 currentBpm = change.bpm;
             }
 
-            const measureSec = (60 / currentBpm) * 4; // 4/4拍子ベース
-            const cellSec = measureSec / state.measures[m].length;
+            const measureSec = (60 / currentBpm) * 4;
+            const cellSec = measureSec / courseData.measures[m].length;
 
-            for (let c = 0; c < state.measures[m].length; c++) {
+            for (let c = 0; c < courseData.measures[m].length; c++) {
                 if (accumulatedTime <= chartTime && chartTime < accumulatedTime + cellSec) {
                     targetMeasure = m;
                     targetCell = c;
@@ -462,9 +525,9 @@ function updatePlayback() {
         }
 
         if (found) {
-            const totalCellsIndex = targetMeasure * 1000 + targetCell; // 識別用インデックス
+            const totalCellsIndex = targetMeasure * 1000 + targetCell;
             if (state.lastCellIndex !== totalCellsIndex) {
-                const note = state.measures[targetMeasure][targetCell];
+                const note = courseData.measures[targetMeasure][targetCell];
                 if (note > 0) {
                     playSound(note.toString());
                 }
@@ -482,22 +545,37 @@ function generateTJA() {
     tja += `BPM:${state.bpm}\n`;
     tja += `WAVE:${state.audioFile ? state.audioFile.name : "sample.ogg"}\n`;
     tja += `OFFSET:${state.offset}\n`;
-    tja += `COURSE:0\n`;
-    tja += `LEVEL:5\n`;
-    tja += `BALLOON:\n`;
-    tja += `#START\n`;
 
-    state.measures.forEach((measure, mIndex) => {
-        // 途中でBPM変更があれば書き出す
-        const change = state.bpmChanges.find(item => item.measure === mIndex + 1);
-        if (change) {
-            tja += `#BPMCHANGE:${change.bpm}\n`;
-        }
-        let line = measure.join("");
-        tja += line + ",\n";
+    const courseCodeMap = {
+        easy: { course: 0, level: 3 },
+        normal: { course: 1, level: 5 },
+        hard: { course: 2, level: 7 },
+        oni: { course: 3, level: 8 },
+        edit: { course: 4, level: 10 }
+    };
+
+    // すべてのコースを順番に書き出す
+    Object.keys(state.courses).forEach(key => {
+        const courseData = state.courses[key];
+        const info = courseCodeMap[key];
+
+        tja += `COURSE:${info.course}\n`;
+        tja += `LEVEL:${info.level}\n`;
+        tja += `BALLOON:\n`;
+        tja += `#START\n`;
+
+        courseData.measures.forEach((measure, mIndex) => {
+            const change = courseData.bpmChanges.find(item => item.measure === mIndex + 1);
+            if (change) {
+                tja += `#BPMCHANGE:${change.bpm}\n`;
+            }
+            let line = measure.join("");
+            tja += line + ",\n";
+        });
+
+        tja += `#END\n`;
     });
 
-    tja += `#END\n`;
     return tja;
 }
 
