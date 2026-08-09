@@ -7,11 +7,77 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #2a2a35;
+            border-bottom: 1px solid #3e3e50;
+        }
+        .header-controls-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .measure-row {
+            display: flex;
+            margin-bottom: 10px;
+            background: #1e1e28;
+            padding: 10px;
+            border-radius: 8px;
+            align-items: center;
+        }
         .measure-row.playing {
-            background-color: rgba(255, 235, 59, 0.2);
-            box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
-            border-left: 4px solid #ffeb3b;
-            transition: background-color 0.1s ease;
+            background-color: rgba(255, 235, 59, 0.15);
+            box-shadow: inset 4px 0 0 #ffeb3b;
+        }
+        .measure-number {
+            width: 50px;
+            font-weight: bold;
+            color: #888;
+            flex-shrink: 0;
+        }
+        /* 幅が足りない場合は横スクロールさせる */
+        .measure-notes {
+            display: flex;
+            gap: 2px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+            flex-wrap: nowrap;
+            flex: 1;
+        }
+        /* スクロールバーのデザイン */
+        .measure-notes::-webkit-scrollbar {
+            height: 6px;
+        }
+        .measure-notes::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 3px;
+        }
+        .note-cell {
+            width: 32px;
+            height: 32px;
+            background: #2a2a35;
+            border: 1px solid #3e3e50;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0; /* 音符が潰れるのを防ぐ */
+            transition: all 0.1s ease;
+        }
+        .note-cell img {
+            width: 28px;
+            height: 28px;
+            pointer-events: none;
+        }
+        /* 再生中、現在叩かれているノーツを明るく強調する */
+        .note-cell.playing-note img {
+            filter: brightness(2) drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+            transform: scale(1.15);
+            transition: all 0.05s ease;
         }
         .seek-bar-container {
             margin-top: 8px;
@@ -58,27 +124,6 @@
                     <label>OFFSET (秒)</label>
                     <input type="number" step="0.01" id="metaOffset" value="0">
                 </div>
-                <div class="input-group">
-                    <label>拍子</label>
-                    <select id="metaMeasure">
-                        <option value="4/4" selected>4/4</option>
-                        <option value="3/4">3/4</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="panel">
-                <h2>BPM変化設定</h2>
-                <div class="input-group">
-                    <label>適用する小節</label>
-                    <input type="number" id="bpmChangeMeasure" value="2" min="1">
-                </div>
-                <div class="input-group">
-                    <label>新しいBPM</label>
-                    <input type="number" id="bpmChangeValue" value="150">
-                </div>
-                <button id="addBpmChangeBtn" class="btn secondary full-width">BPM変化を追加</button>
-                <div id="bpmChangeList" class="bpm-list"></div>
             </div>
 
             <div class="panel">
@@ -125,21 +170,31 @@
             </div>
 
             <div class="editor-header">
-                <span id="currentTimeDisplay">0.00 / 0.00s</span>
-                <div class="zoom-controls">
-                    <label>解像度 (1小節の分割数):</label>
-                    <select id="subdivisionSelect">
-                        <option value="4">4分音符</option>
-                        <option value="8">8分音符</option>
-                        <option value="16" selected>16分音符</option>
-                        <option value="24">24分音符 (3連符)</option>
-                        <option value="32">32分音符</option>
-                        <option value="48">48分音符</option>
-                    </select>
+                <span id="currentTimeDisplay" style="font-family: monospace; font-size: 16px;">0.00 / 0.00s</span>
+                
+                <div class="header-controls-right">
+                    <!-- 小節ジャンプ機能 -->
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="color: #ccc; font-size: 14px;">小節移動:</label>
+                        <input type="number" id="jumpMeasureInput" min="1" placeholder="例: 60" style="width: 60px; padding: 4px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff;">
+                        <button id="jumpMeasureBtn" class="btn secondary" style="padding: 4px 12px;">Go</button>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="color: #ccc; font-size: 14px;">基本解像度:</label>
+                        <select id="subdivisionSelect" style="padding: 4px; border-radius: 4px; background: #1e1e28; color: #fff; border: 1px solid #555;">
+                            <option value="4">4分</option>
+                            <option value="8">8分</option>
+                            <option value="16" selected>16分</option>
+                            <option value="24">24分</option>
+                            <option value="32">32分</option>
+                            <option value="48">48分</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            <div id="measuresContainer" class="measures-container">
+            <div id="measuresContainer" class="measures-container" style="padding: 15px; overflow-y: auto; height: calc(100vh - 200px);">
             </div>
         </div>
     </main>
@@ -149,25 +204,17 @@ const state = {
     bpm: 120,
     offset: 0,
     title: "sample",
-    subtitle: "",
-    demoStart: 0,
-    songVol: 100,
-    seVol: 100,
-    bgMovie: "",
-    movieOffset: 0,
-    measureType: "4/4",
     subdivision: 16,
     currentCourse: "oni",
     courses: {
-        easy: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 3, balloon: "" },
-        normal: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 5, balloon: "" },
-        hard: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 7, balloon: "" },
-        oni: { exists: true, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 10, balloon: "10,10" },
-        edit: { exists: false, measures: Array(8).fill(0).map(() => Array(16).fill(0)), bpmChanges: [], level: 10, balloon: "" }
+        easy: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
+        normal: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
+        hard: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] },
+        oni: { exists: true, measures: [Array(16).fill(0)], bpmChanges: [] },
+        edit: { exists: false, measures: [Array(16).fill(0)], bpmChanges: [] }
     },
     selectedTool: "1",
     audioFile: null,
-    audioFileName: "未選択",
     audioBuffer: null,
     isPlaying: false,
     startTime: 0,
@@ -178,27 +225,6 @@ const state = {
 };
 
 let soundBuffers = { don: null, ka: null };
-
-const metaTitle = document.getElementById("metaTitle");
-const metaBpm = document.getElementById("metaBpm");
-const metaOffset = document.getElementById("metaOffset");
-const metaMeasure = document.getElementById("metaMeasure");
-const subdivisionSelect = document.getElementById("subdivisionSelect");
-const measuresContainer = document.getElementById("measuresContainer");
-const audioFileInput = document.getElementById("audioFile");
-const importZipInput = document.getElementById("importZip");
-const audioFileNameSpan = document.getElementById("audioFileName");
-const playBtn = document.getElementById("playBtn");
-const stopBtn = document.getElementById("stopBtn");
-const downloadBtn = document.getElementById("downloadBtn");
-const currentTimeDisplay = document.getElementById("currentTimeDisplay");
-const seekBar = document.getElementById("seekBar");
-
-const bpmChangeMeasureInput = document.getElementById("bpmChangeMeasure");
-const bpmChangeValueInput = document.getElementById("bpmChangeValue");
-const addBpmChangeBtn = document.getElementById("addBpmChangeBtn");
-const bpmChangeList = document.getElementById("bpmChangeList");
-const courseTabs = document.querySelectorAll(".course-tab");
 
 window.addEventListener("DOMContentLoaded", () => {
     initAudioContext();
@@ -215,24 +241,16 @@ function initAudioContext() {
 async function loadSoundEffects() {
     try {
         const donRes = await fetch("assets/audio/Neiro1_Don.ogg");
-        if (!donRes.ok) throw new Error();
-        soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
-
+        if (donRes.ok) soundBuffers.don = await state.audioContext.decodeAudioData(await donRes.arrayBuffer());
         const kaRes = await fetch("assets/audio/Neiro1_Ka.ogg");
-        if (!kaRes.ok) throw new Error();
-        soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
+        if (kaRes.ok) soundBuffers.ka = await state.audioContext.decodeAudioData(await kaRes.arrayBuffer());
     } catch (e) {
-        console.warn("効果音の読み込みに失敗しました。", e);
+        console.warn("効果音の読み込みに失敗しました。ローカル環境の場合はWebサーバー経由で開いてください。");
     }
 }
 
 function playSound(type) {
-    if (!state.audioContext) return;
-    
-    if (state.audioContext.state === "suspended") {
-        state.audioContext.resume();
-    }
-
+    if (!state.audioContext || state.audioContext.state === "suspended") state.audioContext.resume();
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
     if (!buffer) return;
     try {
@@ -245,53 +263,42 @@ function playSound(type) {
 
 function setupEventListeners() {
     document.addEventListener("pointerdown", () => {
-        if (state.audioContext && state.audioContext.state === "suspended") {
-            state.audioContext.resume();
-        }
+        if (state.audioContext && state.audioContext.state === "suspended") state.audioContext.resume();
     }, { once: true });
 
-    metaTitle.addEventListener("input", (e) => state.title = e.target.value);
-    metaBpm.addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
-    metaOffset.addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
-    metaMeasure.addEventListener("change", (e) => state.measureType = e.target.value);
+    document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
+    document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
+    document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
 
-    subdivisionSelect.addEventListener("change", (e) => {
-        state.subdivision = parseInt(e.target.value);
-        const measures = state.courses[state.currentCourse].measures;
-        state.courses[state.currentCourse].measures = measures.map(m => {
-            let newMeasure = Array(state.subdivision).fill(0);
-            for(let i=0; i<Math.min(m.length, state.subdivision); i++) newMeasure[i] = m[i];
-            return newMeasure;
-        });
-        renderEditor();
+    // 小節ジャンプ機能
+    document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
+        const m = parseInt(document.getElementById("jumpMeasureInput").value);
+        if(m > 0) {
+            const targetRow = document.querySelector(`.measure-row[data-measure-index="${m - 1}"]`);
+            if(targetRow) {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // ジャンプした小節を一時的にハイライト
+                targetRow.style.transition = 'background-color 0.5s';
+                targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                setTimeout(() => targetRow.style.backgroundColor = '', 1000);
+            }
+        }
     });
 
-    courseTabs.forEach(tab => {
+    // 解像度変更（既存の配列を破壊しないように変更）
+    document.getElementById("subdivisionSelect").addEventListener("change", (e) => {
+        state.subdivision = parseInt(e.target.value);
+        // 新しく小節を追加する際の基準値にするだけで、既存の小節データは強制変換（削除）しない
+    });
+
+    document.querySelectorAll(".course-tab").forEach(tab => {
         tab.addEventListener("click", () => {
-            const selectedCourse = tab.getAttribute("data-course");
-            state.currentCourse = selectedCourse;
-
-            if (!state.courses[selectedCourse].measures || state.courses[selectedCourse].measures.length === 0) {
-                state.courses[selectedCourse].measures = Array(8).fill(0).map(() => Array(state.subdivision).fill(0));
+            state.currentCourse = tab.getAttribute("data-course");
+            if (!state.courses[state.currentCourse].measures || state.courses[state.currentCourse].measures.length === 0) {
+                state.courses[state.currentCourse].measures = [Array(state.subdivision).fill(0)];
             }
-
             updateUIFromState();
         });
-    });
-
-    addBpmChangeBtn.addEventListener("click", () => {
-        const m = parseInt(bpmChangeMeasureInput.value);
-        const b = parseFloat(bpmChangeValueInput.value);
-        if (isNaN(m) || isNaN(b) || m < 1 || b <= 0) return;
-
-        const bpmChanges = state.courses[state.currentCourse].bpmChanges;
-        const existing = bpmChanges.find(item => item.measure === m);
-        if (existing) existing.bpm = b;
-        else {
-            bpmChanges.push({ measure: m, bpm: b });
-            bpmChanges.sort((a, b) => a.measure - b.measure);
-        }
-        renderBpmChanges();
     });
 
     document.querySelectorAll(".tool-btn").forEach(btn => {
@@ -302,16 +309,13 @@ function setupEventListeners() {
         });
     });
 
-    audioFileInput.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        await loadAudioFile(file);
+    document.getElementById("audioFile").addEventListener("change", async (e) => {
+        if (e.target.files[0]) await loadAudioFile(e.target.files[0]);
     });
 
-    importZipInput.addEventListener("change", async (e) => {
+    document.getElementById("importZip").addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         try {
             const zip = new JSZip();
             const zipContent = await zip.loadAsync(file);
@@ -319,183 +323,100 @@ function setupEventListeners() {
             let audioFileObj = null;
 
             for (let filename of Object.keys(zipContent.files)) {
-                const zipEntry = zipContent.files[filename];
                 if (filename.endsWith(".tja")) {
-                    tjaText = await zipEntry.async("text");
+                    tjaText = await zipContent.files[filename].async("text");
                 } else if (filename.match(/\.(ogg|mp3|wav)$/i)) {
-                    const blob = await zipEntry.async("blob");
+                    const blob = await zipContent.files[filename].async("blob");
                     audioFileObj = new File([blob], filename, { type: blob.type });
                 }
             }
-
-            if (!tjaText) {
-                alert("エラー: ZIP内にTJAファイルが見つかりませんでした。");
-                return;
-            }
-
-            parseTJA(tjaText);
-
-            if (audioFileObj) {
-                await loadAudioFile(audioFileObj);
-            }
-
-            metaTitle.value = state.title;
-            metaBpm.value = state.bpm;
-            metaOffset.value = state.offset;
+            if (tjaText) parseTJA(tjaText);
+            if (audioFileObj) await loadAudioFile(audioFileObj);
+            
+            document.getElementById("metaTitle").value = state.title;
+            document.getElementById("metaBpm").value = state.bpm;
+            document.getElementById("metaOffset").value = state.offset;
             updateUIFromState();
-            alert("TJAのインポートが完了しました！");
         } catch (err) {
             alert("エラー: ZIPファイルの解析に失敗しました。");
-            console.error(err);
         }
-        importZipInput.value = "";
+        e.target.value = "";
     });
 
-    playBtn.addEventListener("click", togglePlay);
-    stopBtn.addEventListener("click", resetPlay);
-    downloadBtn.addEventListener("click", downloadZip);
+    document.getElementById("playBtn").addEventListener("click", togglePlay);
+    document.getElementById("stopBtn").addEventListener("click", resetPlay);
+    document.getElementById("downloadBtn").addEventListener("click", downloadZip);
 
+    const seekBar = document.getElementById("seekBar");
     seekBar.addEventListener("input", (e) => {
         if (!state.audioBuffer) return;
-        const duration = state.audioBuffer.duration;
-        state.playbackTime = (parseFloat(e.target.value) / 100) * duration;
+        state.playbackTime = (parseFloat(e.target.value) / 100) * state.audioBuffer.duration;
         
         if (state.isPlaying) {
-            if (state.audioSource) {
-                try { state.audioSource.stop(); } catch(e) {}
-            }
+            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
             state.audioSource = state.audioContext.createBufferSource();
             state.audioSource.buffer = state.audioBuffer;
             state.audioSource.connect(state.audioContext.destination);
             state.audioSource.start(0, state.playbackTime);
             state.startTime = state.audioContext.currentTime - state.playbackTime;
         }
-
         updateLastPlayedNoteIndex();
-        currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     });
 }
 
 async function loadAudioFile(file) {
     state.audioFile = file;
-    state.audioFileName = file.name;
-    audioFileNameSpan.textContent = file.name;
+    document.getElementById("audioFileName").textContent = file.name;
     try {
         state.audioBuffer = await state.audioContext.decodeAudioData(await file.arrayBuffer());
-        seekBar.max = "100";
-        seekBar.value = "0";
-    } catch (err) {
-        alert("エラー: 音楽ファイルのデコードに失敗しました。");
-    }
+    } catch (err) {}
 }
 
-// TJA解析ロジック（正確な小節長分解に修正）
 function parseTJA(text) {
     const lines = text.split(/\r?\n/);
+    const courseMap = { "0": "easy", "EASY": "easy", "1": "normal", "NORMAL": "normal", "2": "hard", "HARD": "hard", "3": "oni", "ONI": "oni", "4": "edit", "EDIT": "edit" };
     
-    let globalMeta = {
-        title: "sample", subtitle: "", bpm: 120, offset: 0,
-        demoStart: 0, songVol: 100, seVol: 100, bgMovie: "", movieOffset: 0, wave: ""
-    };
-
-    const coursesData = {
-        easy: { exists: false, measures: [], bpmChanges: [], level: 3, balloon: "" },
-        normal: { exists: false, measures: [], bpmChanges: [], level: 5, balloon: "" },
-        hard: { exists: false, measures: [], bpmChanges: [], level: 7, balloon: "" },
-        oni: { exists: false, measures: [], bpmChanges: [], level: 10, balloon: "" },
-        edit: { exists: false, measures: [], bpmChanges: [], level: 10, balloon: "" }
-    };
-
-    let activeCourseKey = "oni";
+    let activeCourse = "oni";
     let inCourse = false;
-    let currentMeasures = [];
-    let currentBpmChanges = [];
-    let currentLevel = 10;
-    let currentBalloon = "";
     let measureBuffer = "";
 
-    const courseMap = {
-        "0": "easy", "EASY": "easy",
-        "1": "normal", "NORMAL": "normal",
-        "2": "hard", "HARD": "hard",
-        "3": "oni", "ONI": "oni",
-        "4": "edit", "EDIT": "edit"
-    };
+    Object.keys(state.courses).forEach(k => { state.courses[k].measures = []; state.courses[k].bpmChanges = []; state.courses[k].exists = false; });
 
-    for (let rawLine of lines) {
-        let line = rawLine.trim();
+    for (let line of lines) {
+        line = line.trim();
         if (!line || line.startsWith("//")) continue;
 
-        if (line.includes(":")) {
-            const colonIdx = line.indexOf(":");
-            const key = line.substring(0, colonIdx).trim().toUpperCase();
-            const val = line.substring(colonIdx + 1).trim();
-
-            if (!inCourse) {
-                if (key === "TITLE") globalMeta.title = val;
-                if (key === "SUBTITLE") globalMeta.subtitle = val;
-                if (key === "BPM") globalMeta.bpm = parseFloat(val) || 120;
-                if (key === "OFFSET") globalMeta.offset = parseFloat(val) || 0;
-                if (key === "DEMOSTART") globalMeta.demoStart = parseFloat(val) || 0;
-                if (key === "SONGVOL") globalMeta.songVol = parseInt(val) || 100;
-                if (key === "SEVOL") globalMeta.seVol = parseInt(val) || 100;
-                if (key === "BGMOVIE") globalMeta.bgMovie = val;
-                if (key === "MOVIEOFFSET") globalMeta.movieOffset = parseFloat(val) || 0;
-                if (key === "WAVE") globalMeta.wave = val;
-            }
-
-            if (key === "COURSE") {
-                const mapped = courseMap[val.toUpperCase()];
-                if (mapped) activeCourseKey = mapped;
-            }
-            if (key === "LEVEL") currentLevel = parseInt(val) || 10;
-            if (key === "BALLOON") currentBalloon = val;
+        if (line.includes(":") && !inCourse) {
+            const [key, ...valArr] = line.split(":");
+            const val = valArr.join(":").trim();
+            const k = key.trim().toUpperCase();
+            if (k === "TITLE") state.title = val;
+            if (k === "BPM") state.bpm = parseFloat(val) || 120;
+            if (k === "OFFSET") state.offset = parseFloat(val) || 0;
+            if (k === "COURSE" && courseMap[val.toUpperCase()]) activeCourse = courseMap[val.toUpperCase()];
         }
 
-        if (line.toUpperCase() === "#START") {
-            inCourse = true;
-            currentMeasures = [];
-            currentBpmChanges = [];
-            currentLevel = 10;
-            currentBalloon = "";
-            measureBuffer = "";
-            continue;
-        }
-
-        if (line.toUpperCase() === "#END") {
-            inCourse = false;
-            coursesData[activeCourseKey] = {
-                exists: true,
-                measures: currentMeasures.length > 0 ? currentMeasures : [Array(16).fill(0)],
-                bpmChanges: currentBpmChanges,
-                level: currentLevel,
-                balloon: currentBalloon
-            };
-            continue;
+        if (line.toUpperCase() === "#START") { inCourse = true; measureBuffer = ""; continue; }
+        if (line.toUpperCase() === "#END") { 
+            inCourse = false; 
+            if (state.courses[activeCourse].measures.length === 0) state.courses[activeCourse].measures.push([0]);
+            state.courses[activeCourse].exists = true;
+            continue; 
         }
 
         if (inCourse) {
-            if (line.toUpperCase().startsWith("#BPMCHANGE")) {
-                const bpmVal = parseFloat(line.split(" ")[1] || line.split(":")[1]);
-                if (!isNaN(bpmVal)) {
-                    currentBpmChanges.push({ measure: currentMeasures.length + 1, bpm: bpmVal });
-                }
+            if (line.startsWith("#BPMCHANGE")) {
+                const b = parseFloat(line.split(" ")[1]);
+                if (!isNaN(b)) state.courses[activeCourse].bpmChanges.push({ measure: state.courses[activeCourse].measures.length + 1, bpm: b });
                 continue;
             }
-
             if (line.startsWith("#")) continue;
 
-            // コンマ（,）で区切られるまで文字列を蓄積
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
+            for (let char of line) {
                 if (char === ",") {
                     let notes = [];
-                    for (let c of measureBuffer) {
-                        if (["0","1","2","3","4","5","6","7","8","9"].includes(c)) {
-                            notes.push(parseInt(c));
-                        }
-                    }
-                    currentMeasures.push(notes.length > 0 ? notes : [0]);
+                    for (let c of measureBuffer) if (/[0-9]/.test(c)) notes.push(parseInt(c));
+                    state.courses[activeCourse].measures.push(notes.length > 0 ? notes : [0]);
                     measureBuffer = "";
                 } else {
                     measureBuffer += char;
@@ -503,81 +424,28 @@ function parseTJA(text) {
             }
         }
     }
-
-    state.title = globalMeta.title;
-    state.bpm = globalMeta.bpm;
-    state.offset = globalMeta.offset;
-    state.subtitle = globalMeta.subtitle;
-    state.demoStart = globalMeta.demoStart;
-    state.songVol = globalMeta.songVol;
-    state.seVol = globalMeta.seVol;
-    state.bgMovie = globalMeta.bgMovie;
-    state.movieOffset = globalMeta.movieOffset;
-
-    Object.keys(coursesData).forEach(k => {
-        if (!coursesData[k].exists && coursesData[k].measures.length > 0 && coursesData[k].measures[0].some(n => n > 0)) {
-            coursesData[k].exists = true;
-        }
-    });
-
-    state.courses = coursesData;
-    const firstExisting = Object.keys(coursesData).find(k => coursesData[k].exists);
-    state.currentCourse = firstExisting || "oni";
+    
+    // 生きているコースを自動選択
+    const firstCourse = Object.keys(state.courses).find(k => state.courses[k].exists);
+    if(firstCourse) state.currentCourse = firstCourse;
 }
 
 function updateUIFromState() {
-    renderCourseTabs();
-    renderEditor();
-    renderBpmChanges();
-}
-
-function renderCourseTabs() {
-    courseTabs.forEach(tab => {
-        const courseKey = tab.getAttribute("data-course");
-        const courseInfo = state.courses[courseKey];
-        
-        if (courseInfo && courseInfo.exists) {
-            tab.classList.add("has-data");
-        } else {
-            tab.classList.remove("has-data");
-        }
-
-        if (courseKey === state.currentCourse) {
-            tab.classList.add("active");
-        } else {
-            tab.classList.remove("active");
-        }
+    document.querySelectorAll(".course-tab").forEach(tab => {
+        const k = tab.getAttribute("data-course");
+        tab.classList.toggle("has-data", state.courses[k].exists);
+        tab.classList.toggle("active", k === state.currentCourse);
     });
-}
-
-function renderBpmChanges() {
-    bpmChangeList.innerHTML = "";
-    const bpmChanges = state.courses[state.currentCourse].bpmChanges;
-    bpmChanges.forEach((item, index) => {
-        const div = document.createElement("div");
-        div.className = "bpm-item";
-        div.innerHTML = `<span>#${item.measure}小節〜: BPM ${item.bpm}</span>`;
-        const delBtn = document.createElement("button");
-        delBtn.textContent = "×";
-        delBtn.addEventListener("click", () => {
-            bpmChanges.splice(index, 1);
-            renderBpmChanges();
-        });
-        div.appendChild(delBtn);
-        bpmChangeList.appendChild(div);
-    });
-}
-
-function renderEditor() {
-    measuresContainer.innerHTML = "";
-    const courseData = state.courses[state.currentCourse];
-    const measures = courseData.measures;
+    
+    const container = document.getElementById("measuresContainer");
+    container.innerHTML = "";
+    const measures = state.courses[state.currentCourse].measures;
 
     measures.forEach((measure, mIndex) => {
         const row = document.createElement("div");
         row.className = "measure-row";
         row.dataset.measureIndex = mIndex;
-
+        
         const num = document.createElement("div");
         num.className = "measure-number";
         num.textContent = `#${mIndex + 1}`;
@@ -585,6 +453,13 @@ function renderEditor() {
 
         const notesDiv = document.createElement("div");
         notesDiv.className = "measure-notes";
+        // ホイールでの横スクロールを補助
+        notesDiv.addEventListener('wheel', (e) => {
+            if (e.deltaY !== 0) {
+                notesDiv.scrollLeft += e.deltaY;
+                e.preventDefault();
+            }
+        }, { passive: false });
 
         measure.forEach((note, nIndex) => {
             const cell = document.createElement("div");
@@ -592,117 +467,74 @@ function renderEditor() {
             updateCellContent(cell, note);
 
             cell.addEventListener("click", () => {
-                courseData.exists = true;
-                renderCourseTabs();
-                if (state.selectedTool === "delete") {
-                    measures[mIndex][nIndex] = 0;
-                } else {
+                state.courses[state.currentCourse].exists = true;
+                if (state.selectedTool === "delete") measures[mIndex][nIndex] = 0;
+                else {
                     measures[mIndex][nIndex] = parseInt(state.selectedTool);
                     playSound(state.selectedTool);
                 }
                 updateCellContent(cell, measures[mIndex][nIndex]);
             });
-
             notesDiv.appendChild(cell);
         });
-
         row.appendChild(notesDiv);
-        measuresContainer.appendChild(row);
+        container.appendChild(row);
     });
 }
 
-function updateCellContent(cell, noteValue) {
+function updateCellContent(cell, val) {
     cell.innerHTML = "";
-    if (noteValue === 0) return;
-
+    if (val === 0) return;
     const img = document.createElement("img");
-    if (noteValue === 1) img.src = "assets/img/Don.png";
-    else if (noteValue === 2) img.src = "assets/img/Ka.png";
-    else if (noteValue === 3) img.src = "assets/img/Don_2.png";
-    else if (noteValue === 4) img.src = "assets/img/Ka_2.png";
-    else {
-        cell.textContent = noteValue;
-        return;
-    }
+    if (val === 1) img.src = "assets/img/Don.png";
+    else if (val === 2) img.src = "assets/img/Ka.png";
+    else if (val === 3) img.src = "assets/img/Don_2.png";
+    else if (val === 4) img.src = "assets/img/Ka_2.png";
+    else return;
     cell.appendChild(img);
 }
 
 function togglePlay() {
-    if (state.isPlaying) pausePlay();
-    else startPlay();
-}
-
-function startPlay() {
-    if (state.audioContext.state === "suspended") state.audioContext.resume();
-    state.isPlaying = true;
-    playBtn.textContent = "一時停止";
-
-    if (state.audioBuffer) {
+    if (state.isPlaying) {
+        state.isPlaying = false;
+        document.getElementById("playBtn").textContent = "再生 / 停止";
         if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
-        state.audioSource = state.audioContext.createBufferSource();
-        state.audioSource.buffer = state.audioBuffer;
-        state.audioSource.connect(state.audioContext.destination);
-        state.audioSource.start(0, Math.max(0, state.playbackTime));
+        if (state.audioBuffer) {
+            state.playbackTime = state.audioContext.currentTime - state.startTime;
+            if (state.playbackTime < 0) state.playbackTime = 0;
+        }
+        clearMeasureHighlight();
+    } else {
+        if (state.audioContext.state === "suspended") state.audioContext.resume();
+        state.isPlaying = true;
+        document.getElementById("playBtn").textContent = "一時停止";
+        if (state.audioBuffer) {
+            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+            state.audioSource = state.audioContext.createBufferSource();
+            state.audioSource.buffer = state.audioBuffer;
+            state.audioSource.connect(state.audioContext.destination);
+            state.audioSource.start(0, Math.max(0, state.playbackTime));
+        }
+        state.startTime = state.audioContext.currentTime - state.playbackTime;
+        requestAnimationFrame(updatePlayback);
     }
-
-    state.startTime = state.audioContext.currentTime - state.playbackTime;
-    requestAnimationFrame(updatePlayback);
-}
-
-function pausePlay() {
-    state.isPlaying = false;
-    playBtn.textContent = "再生 / 停止";
-    if (state.audioSource) {
-        try { state.audioSource.stop(); } catch(e) {}
-        state.audioSource = null;
-    }
-    if (state.audioBuffer) {
-        state.playbackTime = state.audioContext.currentTime - state.startTime;
-        if (state.playbackTime < 0) state.playbackTime = 0;
-    }
-    clearMeasureHighlight();
 }
 
 function resetPlay() {
-    pausePlay();
+    if (state.isPlaying) togglePlay();
     state.playbackTime = 0;
     state.lastPlayedNoteIndex = -1;
-    seekBar.value = "0";
-    const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
-    currentTimeDisplay.textContent = `0.00 / ${duration.toFixed(2)}s`;
+    document.getElementById("seekBar").value = "0";
     clearMeasureHighlight();
 }
 
 function clearMeasureHighlight() {
     document.querySelectorAll(".measure-row").forEach(r => r.classList.remove("playing"));
+    document.querySelectorAll(".note-cell.playing-note").forEach(c => c.classList.remove("playing-note"));
 }
 
 function updateLastPlayedNoteIndex() {
-    const courseData = state.courses[state.currentCourse];
-    const measures = courseData.measures;
-    let currentBpm = state.bpm;
-    let accumulatedTime = -state.offset;
-    let noteGlobalIndex = 0;
-    let lastFound = -1;
-
-    for (let m = 0; m < measures.length; m++) {
-        const bpmChange = courseData.bpmChanges.find(item => item.measure === m + 1);
-        if (bpmChange) currentBpm = bpmChange.bpm;
-
-        const measureTime = (60 / currentBpm) * 4;
-        const subdivision = measures[m].length;
-        const stepTime = measureTime / subdivision;
-
-        for (let n = 0; n < subdivision; n++) {
-            const noteTime = accumulatedTime + (n * stepTime);
-            if (state.playbackTime >= noteTime) {
-                lastFound = noteGlobalIndex;
-            }
-            noteGlobalIndex++;
-        }
-        accumulatedTime += measureTime;
-    }
-    state.lastPlayedNoteIndex = lastFound;
+    state.lastPlayedNoteIndex = -1;
 }
 
 function updatePlayback() {
@@ -710,60 +542,70 @@ function updatePlayback() {
     state.playbackTime = state.audioContext.currentTime - state.startTime;
     const duration = state.audioBuffer ? state.audioBuffer.duration : 0;
 
-    if (state.audioBuffer && state.playbackTime >= duration) {
-        resetPlay();
-        return;
-    }
-
     if (duration > 0) {
-        seekBar.value = (state.playbackTime / duration) * 100;
+        if (state.playbackTime >= duration) { resetPlay(); return; }
+        document.getElementById("seekBar").value = (state.playbackTime / duration) * 100;
+        document.getElementById("currentTimeDisplay").textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
     }
 
-    currentTimeDisplay.textContent = `${state.playbackTime.toFixed(2)} / ${duration.toFixed(2)}s`;
-
-    const courseData = state.courses[state.currentCourse];
-    const measures = courseData.measures;
+    const course = state.courses[state.currentCourse];
     let currentBpm = state.bpm;
-    
     let accumulatedTime = -state.offset;
     let noteGlobalIndex = 0;
-    let activeMeasureIndex = -1;
+    
+    let activeMIndex = -1;
+    let activeNIndex = -1;
 
-    for (let m = 0; m < measures.length; m++) {
-        const bpmChange = courseData.bpmChanges.find(item => item.measure === m + 1);
-        if (bpmChange) currentBpm = bpmChange.bpm;
+    for (let m = 0; m < course.measures.length; m++) {
+        const bChange = course.bpmChanges.find(i => i.measure === m + 1);
+        if (bChange) currentBpm = bChange.bpm;
 
-        const measureTime = (60 / currentBpm) * 4;
-        const subdivision = measures[m].length;
-        const stepTime = measureTime / subdivision;
+        const mTime = (60 / currentBpm) * 4;
+        const sub = course.measures[m].length;
+        const stepTime = mTime / sub;
 
-        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + measureTime) {
-            activeMeasureIndex = m;
+        if (state.playbackTime >= accumulatedTime && state.playbackTime < accumulatedTime + mTime) {
+            activeMIndex = m;
         }
 
-        for (let n = 0; n < subdivision; n++) {
+        for (let n = 0; n < sub; n++) {
             const noteTime = accumulatedTime + (n * stepTime);
             
             if (state.playbackTime >= noteTime && state.playbackTime < noteTime + stepTime) {
+                activeNIndex = n;
                 if (state.lastPlayedNoteIndex !== noteGlobalIndex) {
-                    const noteVal = measures[m][n];
-                    if (noteVal > 0 && noteVal <= 4) {
-                        playSound(noteVal.toString());
-                    }
+                    const v = course.measures[m][n];
+                    if (v > 0 && v <= 4) playSound(v.toString());
                     state.lastPlayedNoteIndex = noteGlobalIndex;
                 }
             }
             noteGlobalIndex++;
         }
-        accumulatedTime += measureTime;
+        accumulatedTime += mTime;
     }
 
-    const measureRows = document.querySelectorAll(".measure-row");
-    measureRows.forEach((row, idx) => {
-        if (idx === activeMeasureIndex) {
+    const rows = document.querySelectorAll(".measure-row");
+    rows.forEach((row, idx) => {
+        if (idx === activeMIndex) {
             row.classList.add("playing");
+            const cells = row.querySelectorAll(".note-cell");
+            cells.forEach((cell, cellIdx) => {
+                if (cellIdx === activeNIndex && course.measures[activeMIndex][cellIdx] !== 0) {
+                    cell.classList.add("playing-note");
+                } else {
+                    cell.classList.remove("playing-note");
+                }
+            });
+            
+            // 再生中の小節が画面外にある場合は自動スクロール
+            const rect = row.getBoundingClientRect();
+            const container = document.getElementById("measuresContainer");
+            if (rect.top < container.getBoundingClientRect().top || rect.bottom > container.getBoundingClientRect().bottom) {
+                row.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
         } else {
             row.classList.remove("playing");
+            row.querySelectorAll(".note-cell.playing-note").forEach(c => c.classList.remove("playing-note"));
         }
     });
 
@@ -771,65 +613,32 @@ function updatePlayback() {
 }
 
 function generateTJA() {
-    let tja = `// PeepoDrumKit Export\n`;
-    tja += `TITLE:${state.title}\n`;
-    if (state.subtitle) tja += `SUBTITLE:${state.subtitle}\n`;
-    tja += `BPM:${state.bpm}\n`;
-    tja += `WAVE:${state.audioFile ? state.audioFile.name : "sample.ogg"}\n`;
-    tja += `OFFSET:${state.offset}\n`;
-    if (state.demoStart) tja += `DEMOSTART:${state.demoStart}\n`;
-    if (state.songVol !== 100) tja += `SONGVOL:${state.songVol}\n`;
-    if (state.seVol !== 100) tja += `SEVOL:${state.seVol}\n`;
-    if (state.bgMovie) tja += `BGMOVIE:${state.bgMovie}\n`;
-    if (state.movieOffset) tja += `MOVIEOFFSET:${state.movieOffset}\n`;
+    let tja = `TITLE:${state.title}\nBPM:${state.bpm}\nOFFSET:${state.offset}\n`;
+    if (state.audioFile) tja += `WAVE:${state.audioFile.name}\n`;
     tja += `\n`;
-
-    const courseCodeMap = {
-        easy: { course: 0, name: "Easy" },
-        normal: { course: 1, name: "Normal" },
-        hard: { course: 2, name: "Hard" },
-        oni: { course: 3, name: "Oni" },
-        edit: { course: 4, name: "Edit" }
-    };
-
-    Object.keys(state.courses).forEach(key => {
-        const courseData = state.courses[key];
-        if (!courseData.exists) return;
-
-        const info = courseCodeMap[key];
-        tja += `COURSE:${info.name}\n`;
-        tja += `LEVEL:${courseData.level}\n`;
-        if (courseData.balloon) tja += `BALLOON:${courseData.balloon}\n`;
-        tja += `\n#START\n`;
-
-        courseData.measures.forEach((measure, mIndex) => {
-            const change = courseData.bpmChanges.find(item => item.measure === mIndex + 1);
-            if (change) {
-                tja += `#BPMCHANGE ${change.bpm}\n`;
-            }
-            tja += measure.join("") + ",\n";
+    const m = { easy: "0", normal: "1", hard: "2", oni: "3", edit: "4" };
+    Object.keys(state.courses).forEach(k => {
+        if (!state.courses[k].exists) return;
+        tja += `COURSE:${m[k]}\n#START\n`;
+        state.courses[k].measures.forEach((meas, idx) => {
+            const b = state.courses[k].bpmChanges.find(i => i.measure === idx + 1);
+            if (b) tja += `#BPMCHANGE ${b.bpm}\n`;
+            tja += meas.join("") + ",\n";
         });
-
         tja += `#END\n\n`;
     });
-
     return tja;
 }
 
 async function downloadZip() {
     const zip = new JSZip();
     zip.file(`${state.title}.tja`, generateTJA());
-    if (state.audioFile) {
-        zip.file(state.audioFile.name, state.audioFile);
-    }
-    const content = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(content);
+    if (state.audioFile) zip.file(state.audioFile.name, state.audioFile);
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `${state.title}.zip`;
-    document.body.appendChild(a);
+    a.href = url; a.download = `${state.title}.zip`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
     </script>
