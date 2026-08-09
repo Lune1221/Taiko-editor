@@ -122,6 +122,39 @@ main {
     width: 120px;
 }
 
+.full-width {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.bpm-list {
+    margin-top: 8px;
+    max-height: 100px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bpm-item {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.bpm-item button {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-weight: bold;
+}
+
 .tool-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -191,7 +224,6 @@ main {
 .btn.secondary { background-color: var(--border-color); color: white; }
 .btn.success { background-color: var(--success); border-color: var(--success); color: white; }
 .btn.danger { background-color: var(--danger); border-color: var(--danger); color: white; }
-.btn.small { padding: 2px 6px; font-size: 0.75rem; }
 
 .editor-container {
     flex: 1;
@@ -234,7 +266,6 @@ main {
     gap: 16px;
 }
 
-/* 小節のスタイル */
 .measure-row {
     background-color: var(--panel-bg);
     border: 1px solid var(--border-color);
