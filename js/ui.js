@@ -15,6 +15,8 @@ export function saveToLocalStorage() {
 
 export function updateBpmChangeListUI() {
     const listDiv = document.getElementById("bpmChangeList");
+    if (!listDiv) return; // 要素がない場合はここで処理を終了（エラー防止）
+    
     listDiv.innerHTML = "";
     const course = state.courses[state.currentCourse];
     course.bpmChanges.forEach(item => {
@@ -48,6 +50,7 @@ export function updateUIFromState() {
     updateBpmChangeListUI();
     
     const container = document.getElementById("measuresContainer");
+    if (!container) return;
     container.innerHTML = "";
     
     // 安全装置：万が一 measures が空ならデフォルトの1小節を作成
@@ -252,7 +255,6 @@ export function updateUIFromState() {
         container.appendChild(row);
     });
 
-    // 状態が更新されるたびに自動保存
     saveToLocalStorage();
 }
 
@@ -277,22 +279,36 @@ export function setupEventListeners() {
         if (state.audioContext && state.audioContext.state === "suspended") state.audioContext.resume();
     }, { once: true });
 
-    document.getElementById("metaTitle").addEventListener("input", (e) => {
-        state.title = e.target.value;
-        saveToLocalStorage();
-    });
-    document.getElementById("metaBpm").addEventListener("change", (e) => {
-        state.bpm = parseFloat(e.target.value) || 120;
-        saveToLocalStorage();
-    });
-    document.getElementById("metaOffset").addEventListener("input", (e) => {
-        state.offset = parseFloat(e.target.value) || 0;
-        saveToLocalStorage();
-    });
+    const titleEl = document.getElementById("metaTitle");
+    if (titleEl) {
+        titleEl.addEventListener("input", (e) => {
+            state.title = e.target.value;
+            saveToLocalStorage();
+        });
+    }
 
-    document.getElementById("subdivisionSelect").addEventListener("change", (e) => {
-        state.subdivision = parseInt(e.target.value);
-    });
+    const bpmEl = document.getElementById("metaBpm");
+    if (bpmEl) {
+        bpmEl.addEventListener("change", (e) => {
+            state.bpm = parseFloat(e.target.value) || 120;
+            saveToLocalStorage();
+        });
+    }
+
+    const offsetEl = document.getElementById("metaOffset");
+    if (offsetEl) {
+        offsetEl.addEventListener("input", (e) => {
+            state.offset = parseFloat(e.target.value) || 0;
+            saveToLocalStorage();
+        });
+    }
+
+    const subEl = document.getElementById("subdivisionSelect");
+    if (subEl) {
+        subEl.addEventListener("change", (e) => {
+            state.subdivision = parseInt(e.target.value);
+        });
+    }
 
     document.querySelectorAll(".course-tab").forEach(tab => {
         tab.addEventListener("click", () => {
@@ -312,58 +328,71 @@ export function setupEventListeners() {
         });
     });
 
-    document.getElementById("audioFile").addEventListener("change", async (e) => {
-        if (e.target.files[0]) await loadAudioFile(e.target.files[0]);
-    });
+    const audioFileEl = document.getElementById("audioFile");
+    if (audioFileEl) {
+        audioFileEl.addEventListener("change", async (e) => {
+            if (e.target.files[0]) await loadAudioFile(e.target.files[0]);
+        });
+    }
 
-    document.getElementById("importZip").addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-            const zip = new JSZip();
-            const zipContent = await zip.loadAsync(file);
-            let tjaText = "";
-            let audioFileObj = null;
+    const importZipEl = document.getElementById("importZip");
+    if (importZipEl) {
+        importZipEl.addEventListener("change", async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const zip = new JSZip();
+                const zipContent = await zip.loadAsync(file);
+                let tjaText = "";
+                let audioFileObj = null;
 
-            for (let filename of Object.keys(zipContent.files)) {
-                if (filename.endsWith(".tja")) {
-                    tjaText = await zipContent.files[filename].async("text");
-                } else if (filename.match(/\.(ogg|mp3|wav)$/i)) {
-                    const blob = await zipContent.files[filename].async("blob");
-                    audioFileObj = new File([blob], filename, { type: blob.type });
+                for (let filename of Object.keys(zipContent.files)) {
+                    if (filename.endsWith(".tja")) {
+                        tjaText = await zipContent.files[filename].async("text");
+                    } else if (filename.match(/\.(ogg|mp3|wav)$/i)) {
+                        const blob = await zipContent.files[filename].async("blob");
+                        audioFileObj = new File([blob], filename, { type: blob.type });
+                    }
                 }
+                if (tjaText) parseTJA(tjaText);
+                if (audioFileObj) await loadAudioFile(audioFileObj);
+                
+                if (titleEl) titleEl.value = state.title;
+                if (bpmEl) bpmEl.value = state.bpm;
+                if (offsetEl) offsetEl.value = state.offset;
+                updateUIFromState();
+                saveToLocalStorage();
+            } catch (err) {
+                alert("エラー: ZIPファイルの解析に失敗しました。");
             }
-            if (tjaText) parseTJA(tjaText);
-            if (audioFileObj) await loadAudioFile(audioFileObj);
-            
-            document.getElementById("metaTitle").value = state.title;
-            document.getElementById("metaBpm").value = state.bpm;
-            document.getElementById("metaOffset").value = state.offset;
-            updateUIFromState();
-            saveToLocalStorage();
-        } catch (err) {
-            alert("エラー: ZIPファイルの解析に失敗しました。");
-        }
-        e.target.value = "";
-    });
+            e.target.value = "";
+        });
+    }
 
-    document.getElementById("playBtn").addEventListener("click", togglePlay);
-    document.getElementById("stopBtn").addEventListener("click", resetPlay);
-    document.getElementById("downloadBtn").addEventListener("click", downloadZip);
+    const playBtn = document.getElementById("playBtn");
+    if (playBtn) playBtn.addEventListener("click", togglePlay);
+
+    const stopBtn = document.getElementById("stopBtn");
+    if (stopBtn) stopBtn.addEventListener("click", resetPlay);
+
+    const downloadBtn = document.getElementById("downloadBtn");
+    if (downloadBtn) downloadBtn.addEventListener("click", downloadZip);
 
     const seekBar = document.getElementById("seekBar");
-    seekBar.addEventListener("input", (e) => {
-        if (!state.audioBuffer) return;
-        state.playbackTime = (parseFloat(e.target.value) / 100) * state.audioBuffer.duration;
-        
-        if (state.isPlaying) {
-            if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
-            state.audioSource = state.audioContext.createBufferSource();
-            state.audioSource.buffer = state.audioBuffer;
-            state.audioSource.connect(state.audioContext.destination);
-            state.audioSource.start(0, state.playbackTime);
-            state.startTime = state.audioContext.currentTime - state.playbackTime;
-        }
-        updateLastPlayedNoteIndex();
-    });
+    if (seekBar) {
+        seekBar.addEventListener("input", (e) => {
+            if (!state.audioBuffer) return;
+            state.playbackTime = (parseFloat(e.target.value) / 100) * state.audioBuffer.duration;
+            
+            if (state.isPlaying) {
+                if (state.audioSource) try { state.audioSource.stop(); } catch(e) {}
+                state.audioSource = state.audioContext.createBufferSource();
+                state.audioSource.buffer = state.audioBuffer;
+                state.audioSource.connect(state.audioContext.destination);
+                state.audioSource.start(0, state.playbackTime);
+                state.startTime = state.audioContext.currentTime - state.playbackTime;
+            }
+            updateLastPlayedNoteIndex();
+        });
+    }
 }
