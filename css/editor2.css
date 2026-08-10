@@ -1,0 +1,16 @@
+/* 小節を囲んでいる枠や背景を無くす */
+.measure-row {
+    display: flex;
+    margin-bottom: 10px;
+    background: transparent;
+    padding: 10px;
+    border: none;
+    align-items: center;
+    gap: 10px;
+}
+
+/* 小節エリア全体に背景画像を敷く */
+.measures-container {
+    background-image: url('../assets/img/bg-pattern-1.png');
+    background-repeat: repeat;
+}
