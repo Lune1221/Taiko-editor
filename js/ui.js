@@ -2,6 +2,17 @@ import { state } from './state.js';
 import { playSound, togglePlay, resetPlay, loadAudioFile, updateLastPlayedNoteIndex } from './audio.js';
 import { parseTJA, downloadZip } from './parser.js';
 
+// Local Storageへ保存する関数
+export function saveToLocalStorage() {
+    const data = {
+        title: state.title,
+        bpm: state.bpm,
+        offset: state.offset,
+        courses: state.courses
+    };
+    localStorage.setItem("taikoEditorData", JSON.stringify(data));
+}
+
 export function updateBpmChangeListUI() {
     const listDiv = document.getElementById("bpmChangeList");
     listDiv.innerHTML = "";
@@ -20,6 +31,7 @@ export function updateBpmChangeListUI() {
         btn.onclick = () => {
             course.bpmChanges = course.bpmChanges.filter(i => i.measure !== item.measure);
             updateBpmChangeListUI();
+            saveToLocalStorage();
         };
         row.appendChild(btn);
         listDiv.appendChild(row);
@@ -183,6 +195,7 @@ export function updateUIFromState() {
                     }
                 }
                 updateUIFromState();
+                saveToLocalStorage();
             });
             notesDiv.appendChild(cell);
         });
@@ -203,6 +216,7 @@ export function updateUIFromState() {
             } else {
                 delete course.scrollChanges[mIndex];
             }
+            saveToLocalStorage();
         });
         scrollDiv.appendChild(scrollInput);
         row.appendChild(scrollDiv);
@@ -215,6 +229,7 @@ export function updateUIFromState() {
         insertBtn.addEventListener("click", () => {
             measures.splice(mIndex + 1, 0, Array(state.subdivision).fill(0));
             updateUIFromState();
+            saveToLocalStorage();
         });
 
         const deleteBtn = document.createElement("button");
@@ -224,6 +239,7 @@ export function updateUIFromState() {
             if (measures.length > 1) {
                 measures.splice(mIndex, 1);
                 updateUIFromState();
+                saveToLocalStorage();
             } else {
                 alert("最後の小節は削除できません。");
             }
@@ -235,6 +251,9 @@ export function updateUIFromState() {
 
         container.appendChild(row);
     });
+
+    // 状態が更新されるたびに自動保存
+    saveToLocalStorage();
 }
 
 function updateCellContent(cell, val, status) {
@@ -258,9 +277,18 @@ export function setupEventListeners() {
         if (state.audioContext && state.audioContext.state === "suspended") state.audioContext.resume();
     }, { once: true });
 
-    document.getElementById("metaTitle").addEventListener("input", (e) => state.title = e.target.value);
-    document.getElementById("metaBpm").addEventListener("change", (e) => state.bpm = parseFloat(e.target.value) || 120);
-    document.getElementById("metaOffset").addEventListener("input", (e) => state.offset = parseFloat(e.target.value) || 0);
+    document.getElementById("metaTitle").addEventListener("input", (e) => {
+        state.title = e.target.value;
+        saveToLocalStorage();
+    });
+    document.getElementById("metaBpm").addEventListener("change", (e) => {
+        state.bpm = parseFloat(e.target.value) || 120;
+        saveToLocalStorage();
+    });
+    document.getElementById("metaOffset").addEventListener("input", (e) => {
+        state.offset = parseFloat(e.target.value) || 0;
+        saveToLocalStorage();
+    });
 
     document.getElementById("addBpmChangeBtn").addEventListener("click", () => {
         const m = parseInt(document.getElementById("bpmChangeMeasure").value);
@@ -271,6 +299,7 @@ export function setupEventListeners() {
             course.bpmChanges.push({ measure: m, bpm: b });
             course.bpmChanges.sort((x, y) => x.measure - y.measure);
             updateBpmChangeListUI();
+            saveToLocalStorage();
         }
     });
 
@@ -280,6 +309,7 @@ export function setupEventListeners() {
         if (!course.measures) course.measures = [];
         course.measures.push(Array(state.subdivision).fill(0));
         updateUIFromState();
+        saveToLocalStorage();
     });
 
     document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
@@ -345,6 +375,7 @@ export function setupEventListeners() {
             document.getElementById("metaBpm").value = state.bpm;
             document.getElementById("metaOffset").value = state.offset;
             updateUIFromState();
+            saveToLocalStorage();
         } catch (err) {
             alert("エラー: ZIPファイルの解析に失敗しました。");
         }
