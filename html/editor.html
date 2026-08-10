@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taiko Chart Editor</title>
+    
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/editor.css">
+    <link rel="stylesheet" href="css/notes.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Taiko Chart Editor</h1>
+        <div class="header-actions">
+            <button onclick="location.href='https://help.lu1221.f5.si'" style="background: #34495e; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">使い方</button>
+            <div class="file-input-group">
+                <input type="file" id="audioFile" accept="audio/*">
+                <label for="audioFile" class="btn secondary">音楽を選択</label>
+                <span id="audioFileName" class="file-name">未選択</span>
+            </div>
+            <div class="file-input-group">
+                <label for="importZip" class="btn secondary">ZIPを開く</label>
+                <input type="file" id="importZip" accept=".zip">
+            </div>
+            <button id="downloadBtn" class="btn primary">ZIPでダウンロード</button>
+        </div>
+    </header>
+
+    <main>
+        <aside class="sidebar">
+            <div class="panel">
+                <h2>曲情報</h2>
+                <div class="input-group">
+                    <label>タイトル</label>
+                    <input type="text" id="metaTitle" value="sample">
+                </div>
+                <div class="input-group">
+                    <label>初期BPM</label>
+                    <input type="number" id="metaBpm" value="120">
+                </div>
+                <div class="input-group">
+                    <label>OFFSET (秒)</label>
+                    <input type="number" step="0.01" id="metaOffset" value="0">
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>BPM変更</h2>
+                <div class="input-group">
+                    <label>小節番号</label>
+                    <input type="number" id="bpmChangeMeasure" value="1" min="1">
+                </div>
+                <div class="input-group">
+                    <label>変更後BPM</label>
+                    <input type="number" id="bpmChangeValue" value="120">
+                </div>
+                <button id="addBpmChangeBtn" class="btn secondary" style="width: 100%; margin-top: 5px;">BPM変更を追加</button>
+                <div id="bpmChangeList" style="margin-top: 8px; font-size: 12px; color: #aaa; max-height: 80px; overflow-y: auto;"></div>
+            </div>
+
+            <div class="panel">
+                <h2>ツールボックス</h2>
+                <div class="tool-grid">
+                    <button class="tool-btn active" data-note="1"><img src="assets/img/Don.png" alt="ドン"> ドン</button>
+                    <button class="tool-btn" data-note="2"><img src="assets/img/Ka.png" alt="カ"> カ</button>
+                    <button class="tool-btn" data-note="3"><img src="assets/img/Don_2.png" alt="大ドン"> 大ドン</button>
+                    <button class="tool-btn" data-note="4"><img src="assets/img/Ka_2.png" alt="大カ"> 大カ</button>
+                    <button class="tool-btn" data-note="5" style="font-size: 12px;"><span class="tool-renda-icon"></span> 連打開始(5)</button>
+                    <button class="tool-btn" data-note="7" style="font-size: 12px;"><span class="tool-balloon-icon"></span> 風船(7)</button>
+                    <button class="tool-btn" data-note="8" style="font-size: 12px;">連打終了(8)</button>
+                    <button class="tool-btn" data-note="0" style="grid-column: span 2;">空白</button>
+                    <button class="tool-btn delete" data-note="delete">削除</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>再生コントロール</h2>
+                <div class="playback-controls" style="display: flex; gap: 5px;">
+                    <button id="playBtn" class="btn success" style="flex: 1;">再生 / 停止</button>
+                    <button id="stopBtn" class="btn danger">最初から</button>
+                </div>
+                <div class="seek-bar-container">
+                    <input type="range" id="seekBar" class="seek-bar" value="0" min="0" max="100" step="0.01">
+                </div>
+            </div>
+        </aside>
+
+        <div class="editor-container">
+            <div class="course-tabs">
+                <button class="course-tab" data-course="easy">かんたん</button>
+                <button class="course-tab" data-course="normal">ふつう</button>
+                <button class="course-tab" data-course="hard">むずかしい</button>
+                <button class="course-tab active" data-course="oni">おに</button>
+                <button class="course-tab" data-course="edit">裏</button>
+            </div>
+
+            <div class="editor-header">
+                <span id="currentTimeDisplay" style="font-family: monospace; font-size: 16px;">0.00 / 0.00s</span>
+                <div class="header-controls-right">
+                    <button id="addMeasureBtn" class="btn secondary" style="padding: 4px 12px;">+ 末尾に小節追加</button>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="color: #ccc; font-size: 14px;">小節移動:</label>
+                        <input type="number" id="jumpMeasureInput" min="1" placeholder="例: 60" style="width: 60px; padding: 4px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff;">
+                        <button id="jumpMeasureBtn" class="btn secondary" style="padding: 4px 12px;">Go</button>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="color: #ccc; font-size: 14px;">基本解像度:</label>
+                        <select id="subdivisionSelect" style="padding: 4px; border-radius: 4px; background: #1e1e28; color: #fff; border: 1px solid #555;">
+                            <option value="4">4分</option>
+                            <option value="8">8分</option>
+                            <option value="16" selected>16分</option>
+                            <option value="24">24分</option>
+                            <option value="32">32分</option>
+                            <option value="48">48分</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div id="measuresContainer" class="measures-container"></div>
+            <script type="module" src="js/main.js"></script>
+        </div>
+    </main>
+</body>
+</html>
