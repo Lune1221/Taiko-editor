@@ -5,14 +5,13 @@
     box-shadow: none !important;
 }
 
-/* 2. エディタのコンテナの背景色を透明にして、パターン画像を表示する */
+/* 2. 背景画像をリポジトリ名を含んだ正しいパスで指定する */
 .editor-container {
     background-color: transparent !important;
-    background-image: url('/assets/img/bg-pattern-1.png') !important;
+    background-image: url('/Taiko-editor/assets/img/bg-pattern-1.png') !important;
     background-repeat: repeat !important;
 }
 
-/* 3. 小節コンテナ自体も背景を透明にする */
 .measures-container {
     background-color: transparent !important;
 }
