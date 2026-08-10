@@ -5,19 +5,7 @@
     box-shadow: none !important;
 }
 
-/* 2. 左側の「BPM変更」のパネルを非表示にする */
-aside.sidebar .panel:nth-child(2) {
-    display: none !important;
-}
-
-/* 小節行の枠や背景を消す（維持） */
-.measure-row {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-}
-
-/* 小節コンテナの背景にパターン画像を表示する */
+/* 2. 小節コンテナの背景にパターン画像を表示する */
 .measures-container {
     background-image: url('../assets/img/bg-pattern-1.png') !important;
     background-repeat: repeat !important;
