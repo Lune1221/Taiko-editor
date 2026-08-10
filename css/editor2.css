@@ -1,43 +1,11 @@
-/* 小節の枠を消して背景をパターンにする */
-.measure-row {
-    display: flex;
-    margin-bottom: 10px;
-    background: transparent;
-    padding: 10px;
-    border: none;
-    align-items: center;
-    gap: 10px;
-}
-
-.measures-container {
-    background-image: url('../assets/img/bg-pattern-1.png');
-    background-repeat: repeat;
-}
-
-/* ツールボタン内の画像を強制的に小さくする */
-.tool-btn img {
-    width: 20px !important;
-    height: 20px !important;
-    max-width: 20px !important;
-    max-height: 20px !important;
-    object-fit: contain !important;
-}
-
-/* 1. 小節行（#1などが書かれている行全体）の背景や枠を完全に消す */
+/* 1. 小節行の枠や背景を完全に消す */
 .measure-row {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
 }
 
-/* 音符を置く各マス自体の背景も透明にする場合 */
-.measure-row .note-slot, 
-.measure-row .measure-notes > div {
-    background: rgba(0, 0, 0, 0.3) !important; /* お好みで調整してください */
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-/* 2. 左側の「BPM変更」パネル自体を非表示にする */
+/* 2. 左側の「BPM変更」のパネルを消す */
 aside.sidebar .panel:nth-child(2) {
     display: none !important;
 }
