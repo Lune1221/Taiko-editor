@@ -290,41 +290,6 @@ export function setupEventListeners() {
         saveToLocalStorage();
     });
 
-    document.getElementById("addBpmChangeBtn").addEventListener("click", () => {
-        const m = parseInt(document.getElementById("bpmChangeMeasure").value);
-        const b = parseFloat(document.getElementById("bpmChangeValue").value);
-        if (m > 0 && !isNaN(b)) {
-            const course = state.courses[state.currentCourse];
-            course.bpmChanges = course.bpmChanges.filter(item => item.measure !== m);
-            course.bpmChanges.push({ measure: m, bpm: b });
-            course.bpmChanges.sort((x, y) => x.measure - y.measure);
-            updateBpmChangeListUI();
-            saveToLocalStorage();
-        }
-    });
-
-    document.getElementById("addMeasureBtn").addEventListener("click", () => {
-        const course = state.courses[state.currentCourse];
-        course.exists = true;
-        if (!course.measures) course.measures = [];
-        course.measures.push(Array(state.subdivision).fill(0));
-        updateUIFromState();
-        saveToLocalStorage();
-    });
-
-    document.getElementById("jumpMeasureBtn").addEventListener("click", () => {
-        const m = parseInt(document.getElementById("jumpMeasureInput").value);
-        if(m > 0) {
-            const targetRow = document.querySelector(`.measure-row[data-measure-index="${m - 1}"]`);
-            if(targetRow) {
-                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                targetRow.style.transition = 'background-color 0.5s';
-                targetRow.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                setTimeout(() => targetRow.style.backgroundColor = '', 1000);
-            }
-        }
-    });
-
     document.getElementById("subdivisionSelect").addEventListener("change", (e) => {
         state.subdivision = parseInt(e.target.value);
     });
