@@ -22,3 +22,22 @@
     max-height: 20px !important;
     object-fit: contain !important;
 }
+
+/* 1. 小節行（#1などが書かれている行全体）の背景や枠を完全に消す */
+.measure-row {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* 音符を置く各マス自体の背景も透明にする場合 */
+.measure-row .note-slot, 
+.measure-row .measure-notes > div {
+    background: rgba(0, 0, 0, 0.3) !important; /* お好みで調整してください */
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 2. 左側の「BPM変更」パネル自体を非表示にする */
+aside.sidebar .panel:nth-child(2) {
+    display: none !important;
+}
