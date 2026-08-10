@@ -27,16 +27,35 @@ export async function loadSoundEffects() {
 }
 
 export function playSound(type) {
-    if (!state.audioContext || state.audioContext.state === "suspended") {
+    if (!state.audioContext) return;
+    if (state.audioContext.state === "suspended") {
         state.audioContext.resume();
     }
+    
     let buffer = (type === "1" || type === "3") ? soundBuffers.don : soundBuffers.ka;
     if (!buffer) return;
+
     try {
         const source = state.audioContext.createBufferSource();
         source.buffer = buffer;
         source.connect(state.audioContext.destination);
-        source.start(0);
+
+        // 効果音のズレ調整（seOffset）を反映
+        const delay = state.seOffset || 0;
+        const playTime = state.audioContext.currentTime + Math.max(0, delay);
+
+        if (delay < 0) {
+            // マイナス（早く鳴らしたい場合）：音声の途中から再生
+            const offsetTime = Math.abs(delay);
+            if (offsetTime < buffer.duration) {
+                source.start(state.audioContext.currentTime, offsetTime);
+            } else {
+                source.start(0);
+            }
+        } else {
+            // 0またはプラス（遅らせたい場合）
+            source.start(playTime);
+        }
     } catch(e) {}
 }
 
