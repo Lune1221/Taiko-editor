@@ -1,12 +1,14 @@
-/* 1. 小節行の枠や背景を消す */
+/* 1. 小節行の枠や背景を完全に消す */
 .measure-row {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
 }
 
-/* 2. 小節コンテナの背景にパターン画像を表示する */
+/* 2. 小節コンテナの背景にパターン画像を強制的に表示する */
+#measuresContainer,
 .measures-container {
+    background-color: transparent !important;
     background-image: url('../assets/img/bg-pattern-1.png') !important;
     background-repeat: repeat !important;
 }
