@@ -14,24 +14,11 @@
     background-repeat: repeat;
 }
 
-/* ツールボタンの大きさを元に戻す設定 */
-.tool-btn {
-    background: #2a2a35;
-    border: 1px solid #444;
-    color: #fff;
-    padding: 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 13px;
-}
-
+/* ツールボタン内の画像を強制的に小さくする */
 .tool-btn img {
-    width: 20px;
-    height: 20px;
-    object-fit: contain;
-    pointer-events: none;
+    width: 20px !important;
+    height: 20px !important;
+    max-width: 20px !important;
+    max-height: 20px !important;
+    object-fit: contain !important;
 }
