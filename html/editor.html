@@ -6,11 +6,11 @@
     <title>Taiko Chart Editor</title>
     
     <link rel="stylesheet" href="../css/base.css">
-    <link rel="stylesheet" href="../css/layout.css">
-    <link rel="stylesheet" href="../css/components.css">
-    <link rel="stylesheet" href="../css/editor.css">
-    <link rel="stylesheet" href="../css/notes.css">
-    <link rel="stylesheet" href="../css/editor2.css">
+<link rel="stylesheet" href="../css/layout.css">
+<link rel="stylesheet" href="../css/components.css">
+<link rel="stylesheet" href="../css/editor.css">
+<link rel="stylesheet" href="../css/notes.css">
+
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
@@ -18,7 +18,7 @@
     <header>
         <h1>Taiko Chart Editor</h1>
         <div class="header-actions">
-            <button onclick="location.href='../index.html'" class="btn secondary">メインエディタへ戻る</button>
+            <button onclick="location.href='html/editor.html'" class="btn secondary">別エディタへ切替</button>
             <button onclick="location.href='https://help.lu1221.f5.si'" style="background: #34495e; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">使い方</button>
             <div class="file-input-group">
                 <input type="file" id="audioFile" accept="audio/*">
@@ -52,12 +52,15 @@
             </div>
 
             <div class="panel">
+            </div>
+
+            <div class="panel">
                 <h2>ツールボックス</h2>
                 <div class="tool-grid">
-                    <button class="tool-btn active" data-note="1"><img src="../assets/img/Don.png" alt="ドン"> ドン</button>
-                    <button class="tool-btn" data-note="2"><img src="../assets/img/Ka.png" alt="カ"> カ</button>
-                    <button class="tool-btn" data-note="3"><img src="../assets/img/Don_2.png" alt="大ドン"> 大ドン</button>
-                    <button class="tool-btn" data-note="4"><img src="../assets/img/Ka_2.png" alt="大カ"> 大カ</button>
+                    <button class="tool-btn active" data-note="1"><img src="assets/img/Don.png" alt="ドン"> ドン</button>
+                    <button class="tool-btn" data-note="2"><img src="assets/img/Ka.png" alt="カ"> カ</button>
+                    <button class="tool-btn" data-note="3"><img src="assets/img/Don_2.png" alt="大ドン"> 大ドン</button>
+                    <button class="tool-btn" data-note="4"><img src="assets/img/Ka_2.png" alt="大カ"> 大カ</button>
                     <button class="tool-btn" data-note="5" style="font-size: 12px;"><span class="tool-renda-icon"></span> 連打開始(5)</button>
                     <button class="tool-btn" data-note="7" style="font-size: 12px;"><span class="tool-balloon-icon"></span> 風船(7)</button>
                     <button class="tool-btn" data-note="8" style="font-size: 12px;">連打終了(8)</button>
@@ -109,7 +112,7 @@
                 </div>
             </div>
             <div id="measuresContainer" class="measures-container"></div>
-            <script type="module" src="../js/main.js"></script>
+            <script type="module" src="js/main.js"></script>
         </div>
     </main>
 </body>
