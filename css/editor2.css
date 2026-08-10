@@ -8,7 +8,7 @@
 /* 2. エディタのコンテナの背景色を透明にして、パターン画像を表示する */
 .editor-container {
     background-color: transparent !important;
-    background-image: url('../assets/img/bg-pattern-1.png') !important;
+    background-image: url('/assets/img/bg-pattern-1.png') !important;
     background-repeat: repeat !important;
 }
 
