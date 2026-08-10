@@ -51,19 +51,6 @@
                 </div>
             </div>
 
-            <div class="panel">
-                <h2>BPM変更</h2>
-                <div class="input-group">
-                    <label>小節番号</label>
-                    <input type="number" id="bpmChangeMeasure" value="1" min="1">
-                </div>
-                <div class="input-group">
-                    <label>変更後BPM</label>
-                    <input type="number" id="bpmChangeValue" value="120">
-                </div>
-                <button id="addBpmChangeBtn" class="btn secondary" style="width: 100%; margin-top: 5px;">BPM変更を追加</button>
-                <div id="bpmChangeList" style="margin-top: 8px; font-size: 12px; color: #aaa; max-height: 80px; overflow-y: auto;"></div>
-            </div>
 
             <div class="panel">
                 <h2>ツールボックス</h2>
@@ -104,7 +91,6 @@
             <div class="editor-header">
                 <span id="currentTimeDisplay" style="font-family: monospace; font-size: 16px;">0.00 / 0.00s</span>
                 <div class="header-controls-right">
-                    <button id="addMeasureBtn" class="btn secondary" style="padding: 4px 12px;">+ 末尾に小節追加</button>
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <label style="color: #ccc; font-size: 14px;">小節移動:</label>
                         <input type="number" id="jumpMeasureInput" min="1" placeholder="例: 60" style="width: 60px; padding: 4px; border-radius: 4px; border: 1px solid #555; background: #1e1e28; color: #fff;">
