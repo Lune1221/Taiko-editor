@@ -5,8 +5,8 @@
     box-shadow: none !important;
 }
 
-/* 2. 小節が並んでいるエリア全体（コンテナ）に背景パターンを敷く */
-#editorContainer, .editor-container, .measures-wrapper, main {
+/* 2. メインの小節エリア全体に背景パターンを表示する */
+.editor-main, [class*="measures"], main {
     background-image: url('../assets/img/bg-pattern-1.png') !important;
     background-repeat: repeat !important;
 }
