@@ -5,7 +5,13 @@
     box-shadow: none !important;
 }
 
-/* 2. 左側の「BPM変更」のパネルを消す */
+/* 2. 小節エリアの背景にパターン画像を表示する */
+.measures-container {
+    background-image: url('../assets/img/bg-pattern-1.png') !important;
+    background-repeat: repeat !important;
+}
+
+/* 3. 「BPM変更」のパネルを非表示にする */
 aside.sidebar .panel:nth-child(2) {
     display: none !important;
 }
