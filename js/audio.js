@@ -40,24 +40,16 @@ export function playSound(type) {
         source.buffer = buffer;
         source.connect(state.audioContext.destination);
 
-        // 効果音のズレ調整（seOffset）を反映
+        // state.seOffset の値をそのまま遅延秒数として加算する
+        // 例: -0.1 なら 0.1秒早く、 0.1 なら 0.1秒遅く鳴る
         const delay = state.seOffset || 0;
-        const playTime = state.audioContext.currentTime + Math.max(0, delay);
+        const playTime = state.audioContext.currentTime + delay;
 
-        if (delay < 0) {
-            // マイナス（早く鳴らしたい場合）：音声の途中から再生
-            const offsetTime = Math.abs(delay);
-            if (offsetTime < buffer.duration) {
-                source.start(state.audioContext.currentTime, offsetTime);
-            } else {
-                source.start(0);
-            }
-        } else {
-            // 0またはプラス（遅らせたい場合）
-            source.start(playTime);
-        }
+        // 過去の時間にならないように保護しつつ再生
+        source.start(Math.max(state.audioContext.currentTime, playTime));
     } catch(e) {}
 }
+
 
 export async function loadAudioFile(file) {
     state.audioFile = file;
