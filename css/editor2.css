@@ -5,10 +5,14 @@
     box-shadow: none !important;
 }
 
-/* 2. 小節コンテナの背景にパターン画像を強制的に表示する */
-#measuresContainer,
-.measures-container {
+/* 2. エディタのコンテナの背景色を透明にして、パターン画像を表示する */
+.editor-container {
     background-color: transparent !important;
     background-image: url('../assets/img/bg-pattern-1.png') !important;
     background-repeat: repeat !important;
+}
+
+/* 3. 小節コンテナ自体も背景を透明にする */
+.measures-container {
+    background-color: transparent !important;
 }
