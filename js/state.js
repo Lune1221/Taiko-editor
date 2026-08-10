@@ -1,6 +1,7 @@
 export const state = {
     bpm: 120,
     offset: 0,
+    seoffset: 0,
     title: "sample",
     subdivision: 16,
     currentCourse: "oni",
