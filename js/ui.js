@@ -8,6 +8,7 @@ export function saveToLocalStorage() {
         title: state.title,
         bpm: state.bpm,
         offset: state.offset,
+        seOffset: state.seOffset, // 効果音の遅延設定も保存に含める
         courses: state.courses
     };
     localStorage.setItem("taikoEditorData", JSON.stringify(data));
@@ -303,6 +304,16 @@ export function setupEventListeners() {
         });
     }
 
+    // 効果音遅延調整（seOffset）の入力イベント設定
+    const seOffsetEl = document.getElementById("seOffsetInput");
+    if (seOffsetEl) {
+        seOffsetEl.value = state.seOffset || 0;
+        seOffsetEl.addEventListener("input", (e) => {
+            state.seOffset = parseFloat(e.target.value) || 0;
+            saveToLocalStorage();
+        });
+    }
+
     const subEl = document.getElementById("subdivisionSelect");
     if (subEl) {
         subEl.addEventListener("change", (e) => {
@@ -360,6 +371,7 @@ export function setupEventListeners() {
                 if (titleEl) titleEl.value = state.title;
                 if (bpmEl) bpmEl.value = state.bpm;
                 if (offsetEl) offsetEl.value = state.offset;
+                if (seOffsetEl) seOffsetEl.value = state.seOffset || 0;
                 updateUIFromState();
                 saveToLocalStorage();
             } catch (err) {
