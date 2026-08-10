@@ -1,4 +1,4 @@
-/* 小節を囲んでいる枠や背景を無くす */
+/* 小節の枠を消して背景をパターンにする */
 .measure-row {
     display: flex;
     margin-bottom: 10px;
@@ -9,8 +9,29 @@
     gap: 10px;
 }
 
-/* 小節エリア全体に背景画像を敷く */
 .measures-container {
     background-image: url('../assets/img/bg-pattern-1.png');
     background-repeat: repeat;
+}
+
+/* ツールボタンの大きさを元に戻す設定 */
+.tool-btn {
+    background: #2a2a35;
+    border: 1px solid #444;
+    color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.tool-btn img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    pointer-events: none;
 }
